@@ -13,7 +13,7 @@ working set and reconstructed it from a chat summary):
 
 import io
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -85,7 +85,7 @@ def test_completed_is_ordered_and_deduped(run_state, monkeypatch, capsys):
 
 def test_begin_resumes_same_day(run_state, monkeypatch, capsys):
     module, _ = run_state
-    day = datetime(2026, 6, 15, 8, 0, 0, tzinfo=timezone.utc)
+    day = datetime(2026, 6, 15, 8, 0, 0, tzinfo=UTC)
     _freeze(module, monkeypatch, day)
 
     module.main(["begin"])
@@ -109,7 +109,7 @@ def test_begin_resumes_same_day(run_state, monkeypatch, capsys):
 
 def test_begin_resets_across_day_boundary(run_state, monkeypatch, capsys):
     module, run_dir = run_state
-    _freeze(module, monkeypatch, datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc))
+    _freeze(module, monkeypatch, datetime(2026, 6, 15, 23, 0, 0, tzinfo=UTC))
     module.main(["begin"])
     capsys.readouterr()
     _stdin(monkeypatch, {"a": 1})
@@ -117,7 +117,7 @@ def test_begin_resets_across_day_boundary(run_state, monkeypatch, capsys):
     capsys.readouterr()
 
     # Next UTC day → fresh run, stale artifacts cleared.
-    _freeze(module, monkeypatch, datetime(2026, 6, 16, 1, 0, 0, tzinfo=timezone.utc))
+    _freeze(module, monkeypatch, datetime(2026, 6, 16, 1, 0, 0, tzinfo=UTC))
     rc = module.main(["begin"])
     out = _out(capsys)
 
@@ -145,7 +145,7 @@ def test_begin_resets_on_corrupt_manifest(run_state, capsys):
 
 def test_begin_resets_on_unsupported_schema_version(run_state, monkeypatch, capsys):
     module, run_dir = run_state
-    day = datetime(2026, 6, 15, 9, 0, 0, tzinfo=timezone.utc)
+    day = datetime(2026, 6, 15, 9, 0, 0, tzinfo=UTC)
     _freeze(module, monkeypatch, day)
     run_dir.mkdir(parents=True, exist_ok=True)
     # A future shape on today's date must NOT resume — the reader does not
@@ -171,7 +171,7 @@ def test_begin_upgrades_a_prior_schema_version_in_place(run_state, monkeypatch, 
     (jbaruch/nanoclaw-conferences#78), so that stage and everything after it
     is dropped and its file removed."""
     module, run_dir = run_state
-    day = datetime(2026, 6, 15, 9, 0, 0, tzinfo=timezone.utc)
+    day = datetime(2026, 6, 15, 9, 0, 0, tzinfo=UTC)
     _freeze(module, monkeypatch, day)
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "manifest.json").write_text(
@@ -208,7 +208,7 @@ def test_begin_upgrade_keeps_stages_untouched_by_the_shape_change(run_state, mon
     """A v1 manifest that never saved `fetch` loses nothing: the upgrade
     invalidates only what the shape change actually affects."""
     module, run_dir = run_state
-    day = datetime(2026, 6, 15, 9, 0, 0, tzinfo=timezone.utc)
+    day = datetime(2026, 6, 15, 9, 0, 0, tzinfo=UTC)
     _freeze(module, monkeypatch, day)
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "manifest.json").write_text(
@@ -232,7 +232,7 @@ def test_begin_rejects_a_non_integer_schema_version(run_state, monkeypatch, caps
     `true` enter the v1 upgrade path (preserving completed stages) and `2.0`
     pass as current. Both are malformed manifests and must reset."""
     module, run_dir = run_state
-    day = datetime(2026, 6, 15, 9, 0, 0, tzinfo=timezone.utc)
+    day = datetime(2026, 6, 15, 9, 0, 0, tzinfo=UTC)
     _freeze(module, monkeypatch, day)
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -329,7 +329,7 @@ def test_reserved_stage_keeps_store_unchanged(run_state, monkeypatch, capsys, co
 
 def test_upgrade_reserved_stage_preserves_manifest(run_state, monkeypatch, capsys):
     module, run_dir = run_state
-    _freeze(module, monkeypatch, datetime(2026, 6, 15, 9, tzinfo=timezone.utc))
+    _freeze(module, monkeypatch, datetime(2026, 6, 15, 9, tzinfo=UTC))
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "manifest.json").write_text(
         json.dumps(
@@ -358,7 +358,7 @@ def test_upgrade_reserved_stage_preserves_manifest(run_state, monkeypatch, capsy
 
 def test_current_manifest_repairs_reserved_checkpoint(run_state, monkeypatch, capsys):
     module, run_dir = run_state
-    _freeze(module, monkeypatch, datetime(2026, 6, 15, 9, tzinfo=timezone.utc))
+    _freeze(module, monkeypatch, datetime(2026, 6, 15, 9, tzinfo=UTC))
     module.main(["begin"])
     for stage in ("fetch", "candidates"):
         _stdin(monkeypatch, {"stage": stage})

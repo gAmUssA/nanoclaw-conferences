@@ -34,12 +34,12 @@ bodies or raise unreachability errors.
 import json
 import os
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
 _FROZEN_TODAY = date(2026, 4, 30)
-_FROZEN_NOW = datetime(2026, 4, 30, 12, 0, 0, tzinfo=timezone.utc)
+_FROZEN_NOW = datetime(2026, 4, 30, 12, 0, 0, tzinfo=UTC)
 
 _DEV_EVENTS_URL = "https://developers.events/all-cfps.json"
 _JAVA_CONFS_URL = "https://javaconferences.org/conferences.json"
@@ -73,7 +73,7 @@ def _ms(d: date, hour: int = 12) -> int:
     """Convert a date to milliseconds since epoch at the given UTC hour.
     Noon UTC keeps the value safely inside the target day under the
     script's explicit-UTC epoch conversion."""
-    return int(datetime(d.year, d.month, d.day, hour, tzinfo=timezone.utc).timestamp() * 1000)
+    return int(datetime(d.year, d.month, d.day, hour, tzinfo=UTC).timestamp() * 1000)
 
 
 def _src_a_entry(name, until_date, *, location="London, UK", conf_dates=None, link=""):

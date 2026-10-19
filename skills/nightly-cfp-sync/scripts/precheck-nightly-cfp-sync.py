@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 # 60h, not the 72h "every third day" multiple of the 24h daily cron interval:
@@ -142,7 +142,7 @@ def main() -> int:
     # process stays killable.
     cursor_path = Path(os.environ.get("NIGHTLY_CFP_SYNC_CURSOR", DEFAULT_CURSOR_PATH))
     try:
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         payload = decide(now_utc, cursor_path)
     except Exception as exc:
         payload = {

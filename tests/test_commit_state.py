@@ -23,7 +23,7 @@ import io
 import json
 import subprocess
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -36,7 +36,7 @@ CURSOR_SCRIPT = REPO_ROOT / "skills/nightly-cfp-sync/scripts/stamp-cursor.py"
 # RUN_START; stamp-last-checked's frozen clock lands the heartbeat at
 # FROZEN_ISO, which is at/after RUN_START, so the cursor gate passes.
 RUN_START = "2026-05-02T06:30:00Z"
-FROZEN_NOW = datetime(2026, 5, 2, 6, 32, 0, tzinfo=timezone.utc)
+FROZEN_NOW = datetime(2026, 5, 2, 6, 32, 0, tzinfo=UTC)
 FROZEN_ISO = "2026-05-02T06:32:00Z"
 CURSOR_NOW = "2026-05-02T06:33:00Z"
 

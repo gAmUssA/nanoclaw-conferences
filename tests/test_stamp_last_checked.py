@@ -14,11 +14,11 @@ Locks down the evidence-gated freshness-heartbeat contract:
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
-_FROZEN_NOW = datetime(2026, 6, 15, 11, 36, 13, tzinfo=timezone.utc)
+_FROZEN_NOW = datetime(2026, 6, 15, 11, 36, 13, tzinfo=UTC)
 _FROZEN_ISO = "2026-06-15T11:36:13Z"
 _TODAY = "2026-06-15"
 
