@@ -87,7 +87,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 DEFAULT_RUN_DIR = Path("/workspace/group/state/cfp-run")
@@ -129,7 +129,7 @@ def _run_dir() -> Path:
 
 
 def _today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+    return datetime.now(UTC).date().isoformat()
 
 
 def _obj(value: object) -> dict:
@@ -151,8 +151,8 @@ def _cfp_open(end_utc: object) -> bool:
     except ValueError:
         return False
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed > datetime.now(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed > datetime.now(UTC)
 
 
 def normalize_event(event: dict, slug: str) -> dict:

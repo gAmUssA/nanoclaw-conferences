@@ -66,7 +66,7 @@ import json
 import re
 import sys
 import urllib.request
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 
@@ -240,7 +240,7 @@ def fetch_developers_events(warnings: list) -> tuple[list, dict]:
         warnings.append("Source A: unexpected format (not a list)")
         return [], _health("malformed_feed")
 
-    now_ms = datetime.now(timezone.utc).timestamp() * 1000
+    now_ms = datetime.now(UTC).timestamp() * 1000
     results = []
     counts = {"received": len(data), "usable": 0, "malformed": 0, "filtered": 0}
 
@@ -265,7 +265,7 @@ def fetch_developers_events(warnings: list) -> tuple[list, dict]:
             # Feed timestamps are UTC epoch ms; convert in UTC explicitly.
             # A naive fromtimestamp uses the host timezone and shifts
             # deadlines by a day on non-UTC runners.
-            deadline = datetime.fromtimestamp(until_ms / 1000, tz=timezone.utc).date()
+            deadline = datetime.fromtimestamp(until_ms / 1000, tz=UTC).date()
 
             conf = entry.get("conf", {})
             name = conf.get("name", "").strip()
@@ -293,9 +293,7 @@ def fetch_developers_events(warnings: list) -> tuple[list, dict]:
             if conf_dates:
                 try:
                     conf_date = (
-                        datetime.fromtimestamp(min(conf_dates) / 1000, tz=timezone.utc)
-                        .date()
-                        .isoformat()
+                        datetime.fromtimestamp(min(conf_dates) / 1000, tz=UTC).date().isoformat()
                     )
                 except (ValueError, OverflowError, OSError, TypeError) as exc:
                     # Narrow to fromtimestamp's real failure modes:
@@ -690,7 +688,7 @@ def main():
         "warnings": warnings,
         "sources": sources,
         "feed_failure": feed_failure,
-        "checked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "checked_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
 

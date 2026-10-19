@@ -50,7 +50,7 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 DEFAULT_CURSOR_PATH = "/workspace/group/state/nightly-cfp-sync-cursor.json"
@@ -94,7 +94,7 @@ def _atomic_write_text(path: Path, content: str, default_mode: int = 0o644) -> N
 
 def _parse_instant(value: str) -> datetime:
     """Parse a UTC ISO instant (`YYYY-MM-DDTHH:MM:SSZ`) into an aware datetime."""
-    return datetime.strptime(value, _ISO_Z).replace(tzinfo=timezone.utc)
+    return datetime.strptime(value, _ISO_Z).replace(tzinfo=UTC)
 
 
 def heartbeat_is_fresh(state_path: Path, since: datetime) -> tuple[bool, str]:
@@ -145,7 +145,7 @@ def _parse_now(value: str | None) -> datetime:
     `...Z`) freezes 'now' for tests per coding-policy: testing-standards;
     production omits it and uses the real UTC clock."""
     if value is None:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     return _parse_instant(value)
 
 

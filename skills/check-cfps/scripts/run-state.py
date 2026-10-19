@@ -66,7 +66,7 @@ import os
 import re
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 DEFAULT_RUN_DIR = Path("/workspace/group/state/cfp-run")
@@ -81,7 +81,7 @@ def _run_dir() -> Path:
 
 
 def _today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+    return datetime.now(UTC).date().isoformat()
 
 
 def _atomic_write_json(path: Path, payload) -> None:

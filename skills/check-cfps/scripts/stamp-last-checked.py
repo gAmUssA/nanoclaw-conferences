@@ -51,7 +51,7 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -208,7 +208,7 @@ def main(argv=None):
                 )
                 return 1
 
-            now_dt = datetime.now(timezone.utc)
+            now_dt = datetime.now(UTC)
             now = now_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
             today = now_dt.date().isoformat()
             advance, reason = verification_state(evidence, today)
