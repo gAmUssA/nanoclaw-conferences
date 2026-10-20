@@ -2,6 +2,12 @@
 
 All notable changes to this plugin are documented here.
 
+
+### Added
+
+- Gate Tier 3 CFP relevance with Jev using the live speaker profile, existing metadata and bounded public website descriptions. Calibrated automatic routes preserve a Sonnet 5.5 fallback for uncertain cases, with no automatic Sessionize relevance default. Existing open rows are rescored while user actions, geo dismissals and Tier 1 approval remain authoritative.
+- Ship a tested calibration summarizer that joins recorded scores to the operator's labels, excludes geography and unknown labels, and reports automatic mistakes and fallback counts. The initial Jev 1.13.0 experiment's open boundary at 0.80 admitted DevFest Nantes despite a negative label; its fit overlapped positives at 0.83 initially and 0.81 with large-page descriptions. The selected conservative boundary produced three correct automatic decisions and fourteen model fallbacks on the seventeen labels. This is threshold selection on a small set, not an independent accuracy claim.
+
 ## 0.1.57 — 2026-10-20
 
 ### Added

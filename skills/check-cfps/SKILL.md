@@ -143,16 +143,28 @@ Country resolution and the verdict rules: `geo-gate.py` docstring.
 
 **Tier 2 — Blocklist:** Check conference name (case-insensitive) against `_blocked_prefixes`. Match → `status: "dismissed"`, `bot_notes: "Auto-dismissed: blocked prefix '[prefix]'"`.
 
-**Tier 3 — AI relevance analysis:** Analyze remaining CFPs using all available data — Sessionize description (ground truth), tags, past speakers, audience type, format. Read `/workspace/trusted/user_professional.md` for Baruch's topics and apply criteria from `/workspace/group/RELEVANCE-CRITERIA.md`.
+**Tier 3 — Jev relevance gate:** read the procedure below, resolved from the installed `tessl__check-cfps` skill root as `references/jev-relevance.md`:
 
-- Sessionize description available → use as ground truth.
-- No description and ambiguous name → interactive runs use targeted web search before deciding; scheduled runs decide from fetched metadata and local criteria, stating uncertainty in `bot_notes` without inventing evidence.
-- Sessionize-sourced candidates → lean relevant when topic is ambiguous; dismiss only if description clearly shows irrelevance.
-- Scheduled non-Sessionize candidates with insufficient topic evidence → record the name and uncertainty in `research_warnings`. For a new candidate, omit it from the state write without persisting a dismissal; keep it eligible for later discovery. For an existing row, preserve its prior relevance decision and notes while applying this run's verified metadata and travel result. Missing evidence alone never justifies a downgrade. Do not claim the conference is off-topic without evidence.
+```text
+skills/check-cfps/references/jev-relevance.md
+```
 
-Relevant → `status: "open"`, `bot_notes` citing specific evidence. Irrelevant → `status: "dismissed"`, `bot_notes: "Dismissed: [reason]"`.
+Run its helper on every remaining candidate, including stored `open`/`approved` rows. Use the live speaker profile and local relevance criteria. Sessionize's universal API has no descriptions or tags; the helper combines existing metadata with bounded public website meta descriptions.
 
-**The "lean relevant when ambiguous" latitude applies ONLY when Tier 3 actually ran on the candidate.** Tier 3 covers every candidate that reaches it; see `references/contracts.md` "Budget-low is not a defer reason."
+- `open` → `status: "open"`, `bot_notes` = the helper's reason.
+- `dismiss` → `status: "dismissed"`, `bot_notes` = the helper's substantive reason, including scores.
+- `preserve` → keep the entry unchanged.
+- `model` → analyze the candidate using Sonnet 5.5 or newer.
+- Give Sonnet the profile, local criteria, descriptions, tags, audience and speakers available in the helper's evidence.
+- Interactive runs may research missing evidence.
+- Scheduled runs use the helper's fetched evidence and local data.
+- Never use Haiku for this judgment.
+- Helper exit 1 → send the full Tier 3 cohort to Sonnet and report the diagnostic.
+- Helper exit 2 → fix the input and rerun.
+
+For a model case, cite specific evidence in `bot_notes`; missing evidence stays uncertain. Scheduled new candidates with insufficient evidence stay eligible for discovery without a persisted dismissal or `open` claim. For an existing row, preserve its prior relevance decision while refreshing verified metadata and travel results. Add uncertain names to `research_warnings`. There is no automatic relevance default for Sessionize.
+
+Tier 3 covers the full cohort every run. On first rollout, rescore all existing `open`/`approved` rows through these same steps; preserve user actions, geo dismissals and Tier 1 approval. A Jev `dismiss` overrides `shown_in_brief` stickiness in Step 8. During that initial backfill, an evidenced Sonnet dismissal also overrides stickiness for a row whose prior notes lack `Jev relevance v1:`; prefix the new substantive notes with `Dismissed: Jev relevance v1: Sonnet —`. A Jev error or uncertain model judgment never overrides stickiness.
 
 **Priority interest tagging (prefilter → arbitrate).** First check the policy: if `/workspace/group/cfp-priorities.json` is absent, empty, or carries no `priority_interests` (no policy), delete `matched_interests` from every non-`user_actioned` `open`/`approved` entry you process and skip the rest of this paragraph — no policy ⇒ pin everything. (Don't infer "no policy" from an empty prefilter result; a present policy that simply matched nothing also returns no proposals.)
 
