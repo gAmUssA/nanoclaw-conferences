@@ -2,6 +2,11 @@
 
 All notable changes to this plugin are documented here.
 
+
+### Added
+
+- Gate Tier 3 CFP relevance with Jev using the live speaker profile, existing metadata and bounded public website descriptions. Calibrated automatic routes preserve a Sonnet 5.5 fallback for uncertain cases, with no automatic Sessionize relevance default. Existing open rows are rescored while user actions, geo dismissals and Tier 1 approval remain authoritative.
+
 ## 0.1.57 — 2026-10-20
 
 ### Added
