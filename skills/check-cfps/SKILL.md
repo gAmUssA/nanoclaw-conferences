@@ -122,6 +122,20 @@ Step 5 covers the full cohort each run. See `references/contracts.md` "Budget-lo
 
 ## Step 6 — Source routing, blocklist, and AI relevance analysis
 
+**Geo gate — every source, before Tier 1:** pipe every candidate in the working set, as a JSON array of `{slug, country, location, city, is_online}`, to:
+
+```bash
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/geo-gate.py --policy /workspace/group/cfp-geo-policy.json
+```
+
+It returns a parallel array of `{slug, verdict, country, reason}`:
+
+- `excluded` → `status: "dismissed"`, `bot_notes` set to its `reason`; the candidate skips Tiers 1–3. A `user_actioned: true` entry is never changed.
+- `allowed` or `unresolved` → continue to Tier 1. An unresolved country is never a reason to dismiss.
+- Exit 1 (policy missing or malformed): surface its stderr in `research_warnings` and run Tiers 1–3 without the geo gate this run. Exit 2: the input was not an array of objects with a `slug`; fix it and rerun.
+
+Country resolution and the verdict rules: `geo-gate.py` docstring.
+
 **Tier 1 — javaconferences.org auto-approve:** `status: "approved"`, `bot_notes: "Auto-approved: javaconferences.org source"`.
 
 **Tier 2 — Blocklist:** Check conference name (case-insensitive) against `_blocked_prefixes`. Match → `status: "dismissed"`, `bot_notes: "Auto-dismissed: blocked prefix '[prefix]'"`.

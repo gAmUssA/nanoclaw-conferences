@@ -2,6 +2,12 @@
 
 All notable changes to this plugin are documented here.
 
+## 0.1.57 — 2026-10-20
+
+### Added
+
+- check-cfps applies Baruch's travel policy to every candidate before the source tiers, the javaconferences.org auto-approve included (part of #91). `scripts/geo-gate.py` reads the operator-owned `/workspace/group/cfp-geo-policy.json` (`allowed_countries`, `aliases`, per-slug `exceptions`). It resolves a candidate's country from its `country` field, the last part of `location`, or `City (Country)` / `City, …, Country` in `city`. A recognized country outside the policy is dismissed with `bot_notes` `Geo: <country> is outside the travel policy (cfp-geo-policy.json)`, the form of the 24 dismissals applied by hand on 2026-10-16. Port isn't ready to pay for Malaysia, Turkey, the non-EU Balkans, Armenia, Georgia or Peru; the UAE is in. A value the gate cannot read as a country (a bare city, a US state code, `?`), and an online-only event, goes on to the topic tiers instead: an unresolved country never dismisses. Only names in the script's `COUNTRY_NAMES` list, the policy's allowed countries or its aliases count as countries, so `San Francisco, CA` is never read as a country called CA. The Jev topic gate for Tier 3 follows separately, once its thresholds are calibrated on descriptions.
+
 ## 0.1.53 — 2026-09-28
 
 ### Changed
