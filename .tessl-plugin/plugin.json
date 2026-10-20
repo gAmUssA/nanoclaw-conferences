@@ -6,5 +6,8 @@
   "skills": [
     "skills/check-cfps",
     "skills/nightly-cfp-sync"
+  ],
+  "rules": [
+    "rules/nanoclaw-skill-root.md"
   ]
 }

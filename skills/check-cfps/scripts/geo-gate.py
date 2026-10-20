@@ -15,7 +15,8 @@ city, a US state code, `?`) leaves the country unresolved. Verdicts:
 
 - `allowed`: the country is allowed, or the slug is in `exceptions`.
 - `excluded`: a recognized country outside the policy. The caller
-  dismisses it with `bot_notes` set to `reason`.
+  dismisses it with `bot_notes` set to `reason`, which starts with
+  `Auto-dismissed: Geo:`.
 - `unresolved`: no country could be read, or the event is online-only.
   The caller passes it on to the topic filter; it is never geo-dismissed.
 
@@ -327,7 +328,9 @@ def verdict(candidate: dict, policy: Policy) -> dict:
         "slug": slug,
         "verdict": "excluded",
         "country": country,
-        "reason": f"Geo: {country} is outside the travel policy (cfp-geo-policy.json)",
+        "reason": (
+            f"Auto-dismissed: Geo: {country} is outside the travel policy (cfp-geo-policy.json)"
+        ),
     }
 
 
@@ -352,7 +355,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         policy = Policy(json.loads(Path(args.policy).read_text(encoding="utf-8")))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+    # RecursionError: deeply nested JSON exhausts the decoder's stack.
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
         print(
             f"geo-gate: cannot use the travel policy at {args.policy} ({exc}); "
             "fix cfp-geo-policy.json, then rerun. No candidate was geo-gated.",
@@ -361,7 +365,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     try:
         records = _validate(json.load(sys.stdin))
-    except (json.JSONDecodeError, ValueError) as exc:
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
         print(
             f"geo-gate: bad candidate input ({exc}); pass a JSON array of objects with a slug",
             file=sys.stderr,

@@ -34,7 +34,7 @@ python3 /home/node/.claude/skills/tessl__check-cfps/scripts/run-state.py begin
 - `{"resume": false}` — fresh run. Proceed from Step 2.
 - `{"resume": true, "completed": [...]}` — a run begun earlier today was interrupted. For each stage already in `completed`, reload its artifact with `run-state.py load <stage>` instead of recomputing it, and resume at the first step whose stage is absent.
 
-**Scheduled override:** after `begin`, invalidate prior pipeline artifacts, ignore its saved `completed` list, and proceed from Step 2. Abort on a non-zero exit. Initialize this invocation's `research_warnings` to an empty array.
+**Scheduled override:** after `begin`, invalidate prior pipeline artifacts, ignore its saved `completed` list, and proceed from Step 2. Abort on a non-zero exit. Initialize this invocation's `research_warnings` and `policy_warnings` to empty arrays.
 
 ```bash
 python3 /home/node/.claude/skills/tessl__check-cfps/scripts/run-state.py invalidate fetch candidates verify working_set verify-evidence
@@ -130,9 +130,12 @@ python3 /home/node/.claude/skills/tessl__check-cfps/scripts/geo-gate.py --policy
 
 It returns a parallel array of `{slug, verdict, country, reason}`:
 
-- `excluded` → `status: "dismissed"`, `bot_notes` set to its `reason`; the candidate skips Tiers 1–3. A `user_actioned: true` entry is never changed.
+- `excluded` → `status: "dismissed"`, with `bot_notes` set to its `reason` (`Auto-dismissed: Geo: …`).
+- An `excluded` candidate skips Tiers 1–3.
+- A `user_actioned: true` entry is never changed by the geo gate.
 - `allowed` or `unresolved` → continue to Tier 1. An unresolved country is never a reason to dismiss.
-- Exit 1 (policy missing or malformed): surface its stderr in `research_warnings` and run Tiers 1–3 without the geo gate this run. Exit 2: the input was not an array of objects with a `slug`; fix it and rerun.
+- Exit 1 (policy missing or malformed): add its stderr to this run's `policy_warnings`, then run Tiers 1–3 without the geo gate.
+- Exit 2: the input was not an array of objects with a `slug`; fix it and rerun.
 
 Country resolution and the verdict rules: `geo-gate.py` docstring.
 
@@ -187,11 +190,11 @@ After writing cfp-state.json, emit the run's verification report inside an `<int
 
 ```
 <internal>
-{"checked_at": "<ISO>", "new_candidates_added": N, "existing_verified": N, "existing_verify_failed": N, "verification": "live"|"none-required"|"skipped", "research_warnings": ["<candidate name: missing topic evidence>"]}
+{"checked_at": "<ISO>", "new_candidates_added": N, "existing_verified": N, "existing_verify_failed": N, "verification": "live"|"none-required"|"skipped", "research_warnings": ["<candidate name: missing topic evidence>"], "policy_warnings": ["<operator policy file that could not be used: diagnostic>"]}
 </internal>
 ```
 
-`research_warnings` is empty when no candidate lacks topic evidence. It is a run-report field, never a persisted CFP field. Surface non-empty warnings in the output; the scheduled caller consumes them as specified in its own skill.
+`research_warnings` is empty when no candidate lacks topic evidence. `policy_warnings` is empty when every operator policy file loaded. Both are run-report fields, never persisted CFP fields. Surface non-empty warnings in the output; the scheduled caller consumes them as specified in its own skill.
 
 ## Step 9 — Sort and format output
 

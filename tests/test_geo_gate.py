@@ -100,7 +100,9 @@ def test_a_recognized_country_outside_the_policy_is_excluded(
     out = _verdicts(gate, policy_path, [{"slug": "c", **record}], monkeypatch, capsys)
     assert out[0]["verdict"] == "excluded"
     assert out[0]["country"] == country
-    assert out[0]["reason"] == f"Geo: {country} is outside the travel policy (cfp-geo-policy.json)"
+    assert out[0]["reason"] == (
+        f"Auto-dismissed: Geo: {country} is outside the travel policy (cfp-geo-policy.json)"
+    )
 
 
 @pytest.mark.parametrize(
@@ -177,3 +179,20 @@ def test_a_malformed_policy_exits_1(gate, tmp_path, monkeypatch, capsys, policy)
 def test_bad_input_exits_2(gate, policy_path, monkeypatch, capsys, records):
     code, out, _ = _run(gate, policy_path, records, monkeypatch, capsys)
     assert (code, out) == (2, "")
+
+
+def test_deeply_nested_input_exits_2_not_a_traceback(gate, policy_path, monkeypatch, capsys):
+    deep = "[" * 100_000 + "]" * 100_000
+    monkeypatch.setattr("sys.stdin", io.StringIO(deep))
+    code = gate.main(["--policy", str(policy_path)])
+    captured = capsys.readouterr()
+    assert (code, captured.out) == (2, "")
+    assert "bad candidate input" in captured.err
+
+
+def test_a_deeply_nested_policy_exits_1_not_a_traceback(gate, tmp_path, monkeypatch, capsys):
+    path = tmp_path / "cfp-geo-policy.json"
+    path.write_text("[" * 100_000 + "]" * 100_000, encoding="utf-8")
+    code, out, err = _run(gate, path, [{"slug": "c"}], monkeypatch, capsys)
+    assert (code, out) == (1, "")
+    assert "No candidate was geo-gated" in err
