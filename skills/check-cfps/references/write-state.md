@@ -22,7 +22,7 @@ Reads newline-separated URLs from stdin; emits `{<input_url>: <existing_slug_or_
 Then apply priority rules (earlier wins):
 
 1. **`user_actioned: true`** — preserve the entry's decision + metadata fields untouched: the bot does not refresh `updated`/`last_verified` (rules 5/6 apply only to entries actively written this run, not to preserved `user_actioned` ones) and does not re-tag `matched_interests`. The ONLY field stamped on these is `schema_version` (owner metadata, rule 10).
-2. **Sticky (`shown_in_brief: true`)** — preserve `status` and the relevance notes in `bot_notes`. Allowed updates: `deadline`, `city`, `conf_date`, `updated`, `last_verified`, `stale` + `⚠️ STALE DATA` prefix. The helper in item 9 applies the permitted exact-date warning update to these preserved notes. Exception: Step 5 confirmed closed or online overrides stickiness.
+2. **Sticky (`shown_in_brief: true`)** — preserve `status` and the relevance notes in `bot_notes`. Allowed updates: `deadline`, `city`, `conf_date`, `updated`, `last_verified`, `stale` + `⚠️ STALE DATA` prefix. The helper in item 9 applies the permitted exact-date warning update to these preserved notes. Exceptions: a Step 5 confirmed closed or online result, and a Step 6 geo-gate `excluded` verdict, override stickiness.
 3. **Existing `open`/`approved` without sticky** — update status, `bot_notes`, metadata. Downgrade-to-dismissed MUST set `status: "dismissed"`.
 4. **New entries** — write status and `bot_notes` from Steps 6–7. Inherit `_verified_this_run: true` from Step 5. New entries that fail Sessionize verification are dropped.
 5. Set `updated` to today on every written entry.

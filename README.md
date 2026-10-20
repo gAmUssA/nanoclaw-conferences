@@ -51,11 +51,18 @@ The skill reads and writes files under the shared `/workspace/group/` mount:
 | `cfp-state.json` | read+write | this plugin (schema-versioned, owner-migrated) |
 | `cfp-suppressed-today.json` | write | this plugin |
 | `cfp-priorities.json` | read | owner-managed |
+| `cfp-geo-policy.json` | read | owner-managed |
 | `RELEVANCE-CRITERIA.md` | read | owner-managed |
 | `travel-schedule.json` | read | written by `nanoclaw-admin`'s `nightly-external-sync` (co-loaded) |
 | `user_professional.md` | read (`/workspace/trusted/`) | owner-managed |
 
 Reads of admin-owned files resolve because admin co-loads with this overlay in the same chat via the shared mount; each is optional and degrades gracefully when absent.
+
+## Rules
+
+| Rule | Description |
+|---|---|
+| [nanoclaw-skill-root](rules/nanoclaw-skill-root.md) | Command blocks run co-shipped scripts through NanoClaw's skill mount, `/home/node/.claude/skills/tessl__<skill>/scripts/<file>`, the only skill root an agent container has. |
 
 ## Skills
 
@@ -77,6 +84,7 @@ The skill bundle includes deterministic scripts the agent invokes from the SKILL
 - `scripts/backfill-name.py` — derives a fallback `name` for nameless records from the slug or `cfp_url`
 - `scripts/expire-cfps.py` — expires stale non-Sessionize `open`/`approved` entries whose deadline passed
 - `scripts/match-priorities.py` — deterministic priority-interest prefilter
+- `scripts/geo-gate.py` — Step 6 travel-policy gate over `cfp-geo-policy.json`, run before Tier 1 on every source (country resolution and verdicts in its docstring)
 - `scripts/dedup-by-url.py` — collapses entries whose `cfp_url` normalises to the same host+path, preserving the highest-priority source attribution and inheriting missing metadata from dropped copies
 - `scripts/commit-state.py` — lock-owning committer for the Step 8 working-set write (the agent never writes `cfp-state.json` directly)
 - `scripts/update-travel-warnings.py` — applies exact-date warning updates to the final working set from the agent's date-availability judgments before commit
