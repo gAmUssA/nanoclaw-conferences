@@ -15,6 +15,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MOUNT = re.compile(r"/home/node/\.claude/skills/([^\s`'\")/]+)(/[^\s`'\")]*)?")
 COMMAND = re.compile(r"^tessl__(?P<skill>[a-z0-9-]+)/scripts/(?P<file>[A-Za-z0-9._-]+)$")
+# Any interpreter invocation of a script, whatever root it names.
+INVOCATION = re.compile(
+    r"\b(?:python3?|bash|sh|node)\s+(?P<path>[^\s`'\")|;]+\.(?:py|sh|mjs|js))\b"
+)
+DECLARED = re.compile(r"^/home/node/\.claude/skills/tessl__[a-z0-9-]+/scripts/[A-Za-z0-9._-]+$")
 
 
 def _authored_scope() -> list[Path]:
@@ -58,3 +63,37 @@ def test_the_rule_lists_every_shipped_skill():
     rule = (REPO_ROOT / "rules" / "nanoclaw-skill-root.md").read_text(encoding="utf-8")
     for skill in manifest["skills"]:
         assert f"`{Path(skill).name}`" in rule
+
+
+def _invocations() -> list[tuple[Path, str]]:
+    found = []
+    for path in _authored_scope():
+        for match in INVOCATION.finditer(path.read_text(encoding="utf-8")):
+            found.append((path, match.group("path")))
+    return found
+
+
+def test_the_invocation_scan_finds_the_commands():
+    # Positive control: the scan is not vacuous.
+    assert len(_invocations()) >= 10
+
+
+def test_every_script_invocation_uses_the_declared_mount_root():
+    """The rule allows no other root: a `.tessl/plugins/...`, a repo-relative
+    `skills/...`, an abbreviated `.../`, or a `$HOME` path all fail here."""
+    for source, script in _invocations():
+        assert DECLARED.match(script), (
+            f"{source.relative_to(REPO_ROOT)}: `{script}` is not "
+            "/home/node/.claude/skills/tessl__<skill>/scripts/<file>"
+        )
+
+
+def test_the_invocation_check_rejects_other_roots():
+    for script in (
+        ".tessl/plugins/jbaruch/nanoclaw-conferences/skills/check-cfps/scripts/geo-gate.py",
+        "skills/check-cfps/scripts/geo-gate.py",
+        ".../run-state.py",
+        "$HOME/.claude/skills/tessl__check-cfps/scripts/run-state.py",
+    ):
+        match = INVOCATION.search(f"python3 {script} --x")
+        assert match and not DECLARED.match(match.group("path")), script
