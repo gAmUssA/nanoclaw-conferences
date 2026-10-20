@@ -5,10 +5,11 @@ Input: stdin array of candidates with a nonempty slug. Extra fields are ignored.
 Reads the speaker profile and relevance criteria from the supplied local files.
 Fetches each website's bounded public meta description; existing descriptions
 and tags are also evidence. One Noul and one Choice share each Jev request.
-The vendored herdr-policy client validates answers and owns retry limits.
+The feature's stdlib HTTP adapter makes one request per candidate. Its
+recorded probabilities determine the route; provider labels are not gates.
 
 Output: parallel JSON array of {slug, verdict: open|dismiss|model|preserve,
-reason, fit?, kind?, confidence?, evidence?, metadata_warning}. No state file is written.
+reason, fit?, kind?, probabilities?, evidence?, metadata_warning}. No state file is written.
 Scores are run artifacts; callers persist only the existing status/bot_notes.
 User-actioned and geo-dismissed rows are preserved without any network call.
 Tiers 1 and 2 must run before this helper; pass only Tier 3 rows.
@@ -21,20 +22,27 @@ Exit 2: bad stdin/arguments; fix the input and rerun.
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
+import math
+import os
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import typesafe_client as typesafe
 import website_meta
 
 # Renew monthly from /v1/models; rerun the labelled calibration before changing.
 MODEL = "jev-1.13.0"
 HIGH_FIT = 0.85
 LOW_FIT = 0.35
-KIND_CONFIDENCE = 0.80
+KIND_PROBABILITY = 0.80
+ENDPOINT = "https://api.typesafe.ai/v1/systemone"
+RESPONSE_BYTES = 1_048_576
+REQUEST_SECONDS = 30
 WORKERS = 4
 QUESTIONS = {
     "fit": {
@@ -82,6 +90,67 @@ STRING_FIELDS = (
 )
 
 
+class JevUnavailable(Exception):
+    """A safe diagnostic without provider response text or credentials."""
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def ask_jev(state: dict) -> dict:
+    """One request for this feature's two judgments; no provider body in errors."""
+    key = os.environ.get("TYPESAFE_API_KEY", "")
+    if not key or any(char.isspace() for char in key):
+        raise JevUnavailable("set TYPESAFE_API_KEY in the process environment")
+    body = json.dumps({"state": state, "model": MODEL, "questions": QUESTIONS}, allow_nan=False)
+    if key in body:
+        raise JevUnavailable("remove the API credential from the classifier state")
+    request = urllib.request.Request(
+        ENDPOINT,
+        data=body.encode(),
+        method="POST",
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + key},
+    )
+    try:
+        with urllib.request.build_opener(NoRedirect()).open(
+            request, timeout=REQUEST_SECONDS
+        ) as response:
+            raw = response.read(RESPONSE_BYTES + 1)
+        if len(raw) > RESPONSE_BYTES:
+            raise JevUnavailable("TypeSafe response exceeded its byte limit")
+        data = json.loads(raw)
+        if not isinstance(data, dict) or data.get("model") != MODEL:
+            raise JevUnavailable("TypeSafe did not return the pinned model")
+        answers = data.get("answers")
+        if not isinstance(answers, dict) or set(answers) != {"fit", "kind"}:
+            raise JevUnavailable("TypeSafe did not answer both questions")
+        return answers
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        exc.close()
+        raise JevUnavailable(f"TypeSafe HTTP {status}") from None
+    except (OSError, urllib.error.URLError, http.client.HTTPException):
+        raise JevUnavailable("cannot reach TypeSafe; check the network and gateway") from None
+    except (ValueError, RecursionError):
+        raise JevUnavailable("TypeSafe returned invalid JSON") from None
+
+
+def probability(value) -> bool:
+    return type(value) in (float, int) and math.isfinite(value) and 0 <= value <= 1
+
+
+def check_distribution(values) -> None:
+    if (
+        not isinstance(values, dict)
+        or set(values) != set(QUESTIONS["kind"]["criteria"])
+        or not all(probability(value) for value in values.values())
+        or not math.isclose(sum(values.values()), 1.0, abs_tol=0.025)
+    ):
+        raise JevUnavailable("TypeSafe returned an invalid audience distribution")
+
+
 def metadata(url: str) -> dict:
     if not url:
         return {"description": "", "warning": "no website supplied"}
@@ -98,12 +167,19 @@ def metadata(url: str) -> dict:
         return {"description": "", "warning": "website metadata unavailable"}
 
 
-def route(fit: float, kind: str, confidence: float) -> str:
-    if kind == "unknown":
+def route(fit: float, probabilities: dict) -> str:
+    check_distribution(probabilities)
+    if not probability(fit):
+        raise JevUnavailable("TypeSafe returned an invalid fit probability")
+    highest = max(probabilities.values())
+    winners = [key for key, value in probabilities.items() if value == highest]
+    if len(winners) != 1 or winners[0] == "unknown":
         return "model"
-    if fit <= LOW_FIT or (kind in ("not_dev", "off_topic") and confidence >= KIND_CONFIDENCE):
+    irrelevant = probabilities["off_topic"] + probabilities["not_dev"]
+    relevant = probabilities["core"] + probabilities["adjacent"]
+    if fit <= LOW_FIT or irrelevant >= KIND_PROBABILITY:
         return "dismiss"
-    if fit >= HIGH_FIT and kind in ("core", "adjacent"):
+    if fit >= HIGH_FIT and relevant >= KIND_PROBABILITY:
         return "open"
     return "model"
 
@@ -125,30 +201,37 @@ def score(candidate: dict, profile: str, criteria: str, *, ask=None, fetch=None)
     evidence["website_description"] = meta["description"]
     state = {"candidate": evidence, "speaker_profile": profile, "relevance_criteria": criteria}
     try:
-        response = (ask or typesafe.system_one)(state, QUESTIONS, MODEL, key="onecli-managed")
-        fit = typesafe.nouls(response)["fit"]
-        answer = typesafe.choices(response)["kind"]
-    except typesafe.TypeSafeError as exc:
+        answers = (ask or ask_jev)(state)
+        if answers["fit"]["type"] != "noul" or answers["kind"]["type"] != "choice":
+            raise JevUnavailable("TypeSafe returned the wrong question types")
+        fit = answers["fit"]["noul"]
+        probabilities = answers["kind"]["probabilities"]
+        verdict = route(fit, probabilities)
+    except (JevUnavailable, KeyError, TypeError) as exc:
         return {
             "slug": slug,
             "verdict": "model",
-            "reason": f"Jev unavailable: {exc}",
+            "reason": f"Jev unavailable: {exc}"
+            if isinstance(exc, JevUnavailable)
+            else "Jev unavailable: TypeSafe returned an incomplete answer",
             "evidence": evidence,
             "metadata_warning": meta["warning"],
         }
-    kind, confidence = answer["choice"], answer["confidence"]
-    verdict = route(fit, kind, confidence)
+    kind = max(probabilities, key=lambda label: probabilities[label])
+    kind_probability = probabilities[kind]
     prefix = "Dismissed: " if verdict == "dismiss" else ""
     return {
         "slug": slug,
         "verdict": verdict,
         "fit": fit,
         "kind": kind,
-        "confidence": confidence,
+        "probabilities": probabilities,
+        "kind_probability": kind_probability,
         "metadata_warning": meta["warning"],
         "evidence": evidence,
         "reason": (
-            f"{prefix}Jev relevance v1: fit={fit:.3f}, kind={kind}, confidence={confidence:.3f}"
+            f"{prefix}Jev relevance v1: fit={fit:.3f}, "
+            f"kind={kind}, probability={kind_probability:.3f}"
         ),
     }
 

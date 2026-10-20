@@ -25,22 +25,27 @@ def gate(monkeypatch):
     return module
 
 
-def answer(fit, kind="core", confidence=0.99):
+def distribution(kind="core", chance=0.99):
+    values = {key: 0.0 for key in ("core", "adjacent", "off_topic", "not_dev", "unknown")}
+    values[kind] = chance
+    values["adjacent" if kind == "core" else "core"] = 1 - chance
+    return values
+
+
+def answer(fit, kind="core", chance=0.99):
     return {
-        "answers": {
-            "fit": {"type": "noul", "noul": fit},
-            "kind": {
-                "type": "choice",
-                "choice": kind,
-                "confidence": confidence,
-                "probabilities": {kind: 1},
-            },
-        }
+        "fit": {"type": "noul", "noul": fit},
+        "kind": {
+            "type": "choice",
+            "choice": kind,
+            "confidence": 0.0,
+            "probabilities": distribution(kind, chance),
+        },
     }
 
 
 @pytest.mark.parametrize(
-    "fit,kind,confidence,verdict",
+    "fit,kind,chance,verdict",
     [
         (0.95, "core", 0.99, "open"),
         (0.90, "adjacent", 0.8, "open"),
@@ -53,15 +58,15 @@ def answer(fit, kind="core", confidence=0.99):
         (0.83, "core", 0.46, "model"),
     ],
 )
-def test_routes_use_fit_kind_and_uncertainty(gate, fit, kind, confidence, verdict):
-    assert gate.route(fit, kind, confidence) == verdict
+def test_routes_use_fit_kind_and_uncertainty(gate, fit, kind, chance, verdict):
+    assert gate.route(fit, distribution(kind, chance)) == verdict
 
 
 def test_state_has_live_profile_and_evidence_without_prior_verdict_or_expenses(gate):
     asked = []
 
-    def ask(state, questions, model, **kwargs):
-        asked.append((state, questions))
+    def ask(state):
+        asked.append(state)
         return answer(0.95)
 
     result = gate.score(
@@ -80,8 +85,8 @@ def test_state_has_live_profile_and_evidence_without_prior_verdict_or_expenses(g
         ask=ask,
         fetch=lambda url: {"description": "Professional developer conference", "warning": ""},
     )
-    state, questions = asked[0]
-    assert len(asked) == 1 and set(questions) == {"fit", "kind"}
+    state = asked[0]
+    assert len(asked) == 1
     assert state["speaker_profile"] == "Current speaker topics"
     assert state["candidate"]["website_description"] == "Professional developer conference"
     assert state["candidate"]["description"] == "Java tracks"
@@ -113,7 +118,7 @@ def test_one_rejected_candidate_does_not_stop_other_asks(gate):
     def ask(state, *args, **kwargs):
         asked.append(state["candidate"]["name"])
         if len(asked) == 2:
-            raise gate.typesafe.Unavailable("TypeSafe failed with HTTP 400; retry later")
+            raise gate.JevUnavailable("TypeSafe HTTP 400")
         return answer(0.95)
 
     results = [
@@ -261,40 +266,118 @@ def test_redirects_are_revalidated_and_stop_before_private_connections(gate, mon
     assert len(pins) == 1 and connections[0].closed
 
 
-def test_vendored_client_retries_only_its_documented_statuses(gate):
-    attempts, sleeps = [], []
-
-    def transport(*args):
-        attempts.append(args)
-        return 429, b"must not reach an exception"
-
-    with pytest.raises(gate.typesafe.Unavailable, match="HTTP 429"):
-        gate.typesafe.system_one(
-            {}, gate.QUESTIONS, gate.MODEL, key="test-key", transport=transport, sleep=sleeps.append
-        )
-    assert len(attempts) == 4 and sleeps == [1, 2, 4]
-
-
-@pytest.mark.parametrize("status", [400, 401, 413, 422, 500])
-def test_vendored_client_discards_failure_bodies_without_retries(gate, status):
+def fake_jev(gate, monkeypatch, body):
     calls = []
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
 
-    def transport(*args):
-        calls.append(args)
-        return status, b"private conference text and credential"
+    class Response(io.BytesIO):
+        pass
 
-    with pytest.raises(gate.typesafe.TypeSafeError) as error:
-        gate.typesafe.system_one(
-            {}, gate.QUESTIONS, gate.MODEL, key="test-key", transport=transport
-        )
+    class Opener:
+        def open(self, request, timeout):
+            calls.append((request, timeout))
+            return Response(body)
+
+    monkeypatch.setattr(gate.urllib.request, "build_opener", lambda *args: Opener())
+    return calls
+
+
+def test_one_http_request_asks_both_questions_and_reads_the_environment(gate, monkeypatch):
+    raw = json.dumps({"model": gate.MODEL, "answers": answer(0.95)}).encode()
+    calls = fake_jev(gate, monkeypatch, raw)
+    assert gate.ask_jev({"candidate": {"name": "Conference"}})["fit"]["noul"] == 0.95
     assert len(calls) == 1
-    assert "private conference text" not in str(error.value)
-    assert "test-key" not in str(error.value)
+    request, timeout = calls[0]
+    assert request.get_header("Authorization") == "Bearer test-key"
+    assert set(json.loads(request.data)["questions"]) == {"fit", "kind"}
+    assert b"test-key" not in request.data
+    assert timeout == 30
 
 
-def test_vendored_client_rejects_a_wrong_model_or_missing_answer(gate):
-    body = json.dumps({"model": "other", "answers": {}}).encode()
-    with pytest.raises(gate.typesafe.InvalidResponse):
-        gate.typesafe.system_one(
-            {}, gate.QUESTIONS, gate.MODEL, key="test-key", transport=lambda *args: (200, body)
-        )
+@pytest.mark.parametrize("body", [b"not JSON", b"[" * 2000, b'{"model":"other"}'])
+def test_malformed_or_deep_json_becomes_a_safe_fallback(gate, monkeypatch, body):
+    fake_jev(gate, monkeypatch, body)
+    with pytest.raises(gate.JevUnavailable) as exc:
+        gate.ask_jev({})
+    assert "test-key" not in str(exc.value)
+
+
+def test_missing_environment_key_never_starts_a_request(gate, monkeypatch):
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.setattr(gate.urllib.request, "build_opener", lambda *a: pytest.fail("network"))
+    with pytest.raises(gate.JevUnavailable, match="set TYPESAFE_API_KEY"):
+        gate.ask_jev({})
+
+
+def test_truncated_network_response_becomes_a_model_fallback(gate, monkeypatch):
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+
+    class Opener:
+        def open(self, *args, **kwargs):
+            raise gate.http.client.IncompleteRead(b"private truncated response")
+
+    monkeypatch.setattr(gate.urllib.request, "build_opener", lambda *args: Opener())
+    with pytest.raises(gate.JevUnavailable, match="cannot reach TypeSafe"):
+        gate.ask_jev({})
+
+
+@pytest.mark.parametrize("status", [302, 400, 401, 413, 422, 429, 500])
+def test_http_errors_never_read_or_echo_the_body_or_retry(gate, monkeypatch, status):
+    calls = []
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+
+    class PrivateBody(io.BytesIO):
+        def read(self, *args):
+            pytest.fail("read provider error body")
+
+    class Opener:
+        def open(self, *args, **kwargs):
+            calls.append(1)
+            raise gate.urllib.error.HTTPError(
+                gate.ENDPOINT, status, "private text", {}, PrivateBody()
+            )
+
+    monkeypatch.setattr(gate.urllib.request, "build_opener", lambda *args: Opener())
+    with pytest.raises(gate.JevUnavailable) as error:
+        gate.ask_jev({})
+    assert str(error.value) == f"TypeSafe HTTP {status}" and len(calls) == 1
+
+
+def test_provider_label_and_confidence_do_not_decide_the_route(gate):
+    response = answer(0.95)
+    response["kind"].update(choice="not_dev", confidence=1.0)
+    result = gate.score(
+        {"slug": "conf"},
+        "profile",
+        "criteria",
+        ask=lambda state: response,
+        fetch=lambda url: {"description": "", "warning": ""},
+    )
+    assert result["verdict"] == "open" and result["kind"] == "core"
+    assert result["probabilities"] == distribution()
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {},
+        {"core": 1},
+        {"core": 0.4, "adjacent": 0.1, "off_topic": 0.1, "not_dev": 0.1, "unknown": 0.1},
+    ],
+)
+def test_incomplete_or_indeterminate_distributions_go_to_the_model(gate, values):
+    response = answer(0.95)
+    response["kind"]["probabilities"] = values
+    result = gate.score(
+        {"slug": "conf"},
+        "profile",
+        "criteria",
+        ask=lambda state: response,
+        fetch=lambda url: {"description": "", "warning": ""},
+    )
+    assert result["verdict"] == "model"
+
+
+def test_documented_rounded_distribution_is_usable(gate):
+    values = {"core": 0.9, "adjacent": 0.06, "off_topic": 0.03, "not_dev": 0.01, "unknown": 0.01}
+    assert gate.route(0.95, values) == "open"

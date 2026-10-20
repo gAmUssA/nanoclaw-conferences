@@ -148,12 +148,17 @@ Country resolution and the verdict rules: `geo-gate.py` docstring.
 - `open` → `status: "open"`, `bot_notes` = the helper's reason.
 - `dismiss` → `status: "dismissed"`, `bot_notes` = the helper's substantive reason, including scores.
 - `preserve` → keep the entry unchanged.
-- `model` → analyze the candidate using Sonnet 5.5 or newer, the profile, local criteria, available descriptions, tags, audience and speakers. Interactive runs may research missing evidence; scheduled runs use the helper's fetched evidence and local data. Never use Haiku for this judgment.
-- Helper exit 1 → send the full Tier 3 cohort to that Sonnet analysis and report its diagnostic. Exit 2 → fix the input and rerun.
+- `model` → analyze the candidate using Sonnet 5.5 or newer.
+- Give Sonnet the profile, local criteria, descriptions, tags, audience and speakers available in the helper's evidence.
+- Interactive runs may research missing evidence.
+- Scheduled runs use the helper's fetched evidence and local data.
+- Never use Haiku for this judgment.
+- Helper exit 1 → send the full Tier 3 cohort to Sonnet and report the diagnostic.
+- Helper exit 2 → fix the input and rerun.
 
 For a model case, cite specific evidence in `bot_notes`; missing evidence stays uncertain. Scheduled new candidates with insufficient evidence stay eligible for discovery without a persisted dismissal or `open` claim. For an existing row, preserve its prior relevance decision while refreshing verified metadata and travel results. Add uncertain names to `research_warnings`. There is no automatic relevance default for Sessionize.
 
-Tier 3 covers the full cohort every run. On first rollout, rescore all existing `open`/`approved` rows through these same steps; preserve user actions, geo dismissals and Tier 1 approval. A Jev `dismiss` overrides `shown_in_brief` stickiness in Step 8. A Jev error or uncertain model judgment does not.
+Tier 3 covers the full cohort every run. On first rollout, rescore all existing `open`/`approved` rows through these same steps; preserve user actions, geo dismissals and Tier 1 approval. A Jev `dismiss` overrides `shown_in_brief` stickiness in Step 8. During that initial backfill, an evidenced Sonnet dismissal also overrides stickiness for a row whose prior notes lack `Jev relevance v1:`; prefix the new substantive notes with `Dismissed: Jev relevance v1: Sonnet —`. A Jev error or uncertain model judgment never overrides stickiness.
 
 **Priority interest tagging (prefilter → arbitrate).** First check the policy: if `/workspace/group/cfp-priorities.json` is absent, empty, or carries no `priority_interests` (no policy), delete `matched_interests` from every non-`user_actioned` `open`/`approved` entry you process and skip the rest of this paragraph — no policy ⇒ pin everything. (Don't infer "no policy" from an empty prefilter result; a present policy that simply matched nothing also returns no proposals.)
 

@@ -12,18 +12,20 @@ Nantes. Its fit overlapped labelled positives: 0.83 in the initial run,
 0.81 after enabling descriptions from large-page previews. That overlap
 does not support automatic decisions near 0.80.
 
-The selected route uses fit >=0.85 for `core`/`adjacent` automatic opens,
-fit <=0.35 for automatic dismissals, and Choice confidence >=0.80 for
-`off_topic`/`not_dev` automatic dismissals. `unknown`, intermediate scores,
-service failures and invalid answers go to Sonnet 5.5 or newer.
+The selected route uses fit >=0.85 and combined `core`/`adjacent`
+probability >=0.80 for automatic opens. Fit <=0.35 or combined
+`off_topic`/`not_dev` probability >=0.80 permits automatic dismissal.
+A tied maximum or an `unknown` maximum goes to Sonnet first. Provider
+labels and confidence do not decide the route. Intermediate scores,
+service failures and invalid distributions also go to Sonnet 5.5 or newer.
 
 The final evaluation refreshed Sessionize metadata through the current
-normalizer before fetching website descriptions. These rules automatically
-keep FOSDEM (fit 0.90), dismiss NDC Security (fit 0.25), and route fifteen
-to Sonnet. Both automatic decisions match the operator's labels. One
-fallback was an off-contract Choice distribution rejected by the vendored
-client. In an earlier pass, Dev Days Students Madrid was also correctly
-dismissed; the final pass routed its invalid answer to Sonnet.
+normalizer before fetching website descriptions and recorded each full
+distribution. These rules automatically keep FOSDEM (fit 0.89, relevant
+probability 0.89) and DevFest Berlin (fit 0.85, relevant probability 0.95),
+dismiss Dev Days Students Madrid (off-topic probability 0.89), and route
+fourteen to Sonnet. All three automatic decisions match the operator's
+labels. Every response in this final pass supplied a usable distribution.
 
 This small set selected conservative routing boundaries; it is not an
 independent accuracy estimate. Retain the middle band until a larger

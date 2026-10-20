@@ -3,7 +3,7 @@
 After the geo gate and Tiers 1–2, pipe the remaining candidate objects to:
 
 ```bash
-python3 /home/node/.claude/skills/tessl__check-cfps/scripts/relevance-gate.py
+TYPESAFE_API_KEY=onecli-managed python3 /home/node/.claude/skills/tessl__check-cfps/scripts/relevance-gate.py
 ```
 
 Each object needs `slug`. Include available `name`, `description`, `tags`,
@@ -22,12 +22,11 @@ Service errors, malformed answers and unknown audiences take that route.
 Read the helper docstring for the exit and probability contracts.
 The initial threshold evaluation and limits are in `jev-calibration.md`.
 
-The helper uses Jev 1.13.0 and asks an independent fit Noul and audience
-Choice in one request per candidate. Four workers process the full cohort.
-Website requests use only public HTTP(S), pin public DNS results, follow
-at most three redirects, read a 256 KiB preview, and have a 15-second wall
-deadline. Only description and Open Graph description meta tags enter the
-state. A page failure leaves the other metadata available.
+The command supplies a non-secret OneCLI placeholder through the environment;
+the gateway injects the vaulted key. Outside NanoClaw, supply the real key
+through the process environment. Do not put it in the NAS project `.env`.
+Request and routing contracts live in `scripts/relevance-gate.py`; website
+retrieval bounds live in the `scripts/website_meta.py` docstring and constants.
 
 Scores and metadata stay in the run artifact. Persist only the existing
 `status` and `bot_notes` fields. The CFP record schema remains version 1;
