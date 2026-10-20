@@ -143,7 +143,13 @@ Country resolution and the verdict rules: `geo-gate.py` docstring.
 
 **Tier 2 — Blocklist:** Check conference name (case-insensitive) against `_blocked_prefixes`. Match → `status: "dismissed"`, `bot_notes: "Auto-dismissed: blocked prefix '[prefix]'"`.
 
-**Tier 3 — Jev relevance gate:** read `references/jev-relevance.md` and run its helper on every remaining candidate, including stored `open`/`approved` rows. Use the live speaker profile and local relevance criteria. Sessionize's universal API has no descriptions or tags; the helper combines existing metadata with bounded public website meta descriptions.
+**Tier 3 — Jev relevance gate:** read the procedure below, resolved from the installed `tessl__check-cfps` skill root as `references/jev-relevance.md`:
+
+```text
+skills/check-cfps/references/jev-relevance.md
+```
+
+Run its helper on every remaining candidate, including stored `open`/`approved` rows. Use the live speaker profile and local relevance criteria. Sessionize's universal API has no descriptions or tags; the helper combines existing metadata with bounded public website meta descriptions.
 
 - `open` → `status: "open"`, `bot_notes` = the helper's reason.
 - `dismiss` → `status: "dismissed"`, `bot_notes` = the helper's substantive reason, including scores.
