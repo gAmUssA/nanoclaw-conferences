@@ -76,3 +76,30 @@ Then apply priority rules (earlier wins):
    ```
 
    Only here, after the state write and both stampers succeeded — and only if the freshness stamper (item 12) exited 0. If the stamper exited 3 (verification not evidenced) or an earlier step failed and you stopped, do NOT clear — the saved stages let a same-day retry resume (`references/run-state.md`).
+
+
+## Guarded backfill commits
+
+For a delayed model backfill, retain the original source record mapping alongside its judgments. Produce the fingerprint file with the read-only snapshot mode:
+
+```bash
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/commit-state.py --snapshot < original-records.json > expected-digests.json
+```
+
+Stdin maps each proposed slug to its original record or JSON null for an absent source. Stdout maps those slugs to canonical fingerprints; the script owns their encoding. Exit 1 emits a repair diagnostic and no snapshot. Snapshot mode never opens the state file.
+
+Supply the proposed working set on stdin to the guarded commit:
+
+```bash
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/commit-state.py --expected-digests expected-digests.json < proposed-records.json
+```
+
+The committer checks the original sources under its state lock. Its guarded output adds `skipped_changed`, listing preserved records that changed after the snapshot. Re-read those sources before proposing another change. Missing or malformed fingerprints exit 1 without writing state. Without the flag, the Step 8 input/output contract remains unchanged.
+
+After a successful guarded write, run the owner's schema stamper from item 11:
+
+```bash
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/stamp-schema-version.py
+```
+
+Abort on stamper failure. The guarded procedure grants no relevance verdict, freshness claim or operator authority. It does not advance the cadence cursor or freshness heartbeat.
