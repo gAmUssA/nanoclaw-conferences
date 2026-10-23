@@ -80,6 +80,26 @@ Then apply priority rules (earlier wins):
 
 ## Guarded backfill commits
 
-For a delayed model backfill, retain the source record snapshot alongside its judgments. Invoke `scripts/commit-state.py` with `--expected-digests <snapshot-file>` and the proposed working set on stdin. The snapshot file maps every proposed slug to its original record fingerprint; the script's `record_digest` function owns the canonical encoding. An absent original record is represented by the fingerprint of JSON null.
+For a delayed model backfill, retain the original source record mapping alongside its judgments. Produce the fingerprint file with the read-only snapshot mode:
 
-The committer compares each source under its existing state lock. Its guarded output adds `skipped_changed`, listing preserved records that changed after the snapshot. Re-read those sources before proposing another change. Missing or malformed fingerprints exit 1 without writing state. Without this flag, the existing Step 8 input/output contract remains unchanged. This guard grants no relevance verdict, freshness claim or operator authority.
+```bash
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/commit-state.py --snapshot < original-records.json > expected-digests.json
+```
+
+Stdin maps each proposed slug to its original record or JSON null for an absent source. Stdout maps those slugs to canonical fingerprints; the script owns their encoding. Exit 1 emits a repair diagnostic and no snapshot. Snapshot mode never opens the state file.
+
+Supply the proposed working set on stdin to the guarded commit:
+
+```bash
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/commit-state.py --expected-digests expected-digests.json < proposed-records.json
+```
+
+The committer checks the original sources under its state lock. Its guarded output adds `skipped_changed`, listing preserved records that changed after the snapshot. Re-read those sources before proposing another change. Missing or malformed fingerprints exit 1 without writing state. Without the flag, the Step 8 input/output contract remains unchanged.
+
+After a successful guarded write, run the owner's schema stamper from item 11:
+
+```bash
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/stamp-schema-version.py
+```
+
+Abort on stamper failure. The guarded procedure grants no relevance verdict, freshness claim or operator authority. It does not advance the cadence cursor or freshness heartbeat.

@@ -34,6 +34,10 @@ maps every working-set slug to record_digest(original_record), using None
 for an absent record. Under the same write lock, changed source records are
 skipped and reported in skipped_changed; operator actions still win. The
 legacy output shape stays unchanged when this option is absent.
+--snapshot instead reads a slug -> original record (or null for absence)
+JSON object from stdin and emits its fingerprint mapping without opening the
+state file. It is mutually exclusive with --expected-digests. Complete guarded
+writes with the owner's stamp-schema-version.py; snapshot mode has no writes.
 
 Exit 0 on success; exit 1 with a stderr diagnostic on malformed stdin,
 `_`-prefixed or non-dict payload entries, unreadable state, write
@@ -123,8 +127,14 @@ def main(argv=None) -> int:
         description="Commit the Step 8 working set to cfp-state.json under the advisory lock."
     )
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE_PATH)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--expected-digests", type=Path, help="JSON source fingerprints for every proposed slug"
+    )
+    mode.add_argument(
+        "--snapshot",
+        action="store_true",
+        help="Emit source fingerprints from stdin; no state access",
     )
     args = parser.parse_args(argv)
 
@@ -148,12 +158,24 @@ def main(argv=None) -> int:
                 f"user-managed config); remove it from the payload and rerun\n"
             )
             return 1
-        if not isinstance(record, dict):
+        if not isinstance(record, dict) and not (args.snapshot and record is None):
             sys.stderr.write(
                 f"commit-state: record for {slug!r} is {type(record).__name__}, "
                 f"expected an object — fix the working set and rerun\n"
             )
             return 1
+
+    if args.snapshot:
+        try:
+            snapshot = {slug: record_digest(record) for slug, record in working_set.items()}
+        except (ValueError, UnicodeEncodeError) as exc:
+            sys.stderr.write(
+                f"commit-state: cannot fingerprint source snapshot: {exc}; "
+                "restore finite UTF-8 records before retrying\n"
+            )
+            return 1
+        print(json.dumps(snapshot))
+        return 0
 
     expected = None
     if args.expected_digests is not None:

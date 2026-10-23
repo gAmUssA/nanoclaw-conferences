@@ -435,5 +435,50 @@ def test_guarded_commit_refuses_nonfinite_stored_source(
     assert state_path.read_text() == original
 
 
+def test_snapshot_cli_canonicalizes_sources_without_opening_state(
+    commit_state, tmp_path, monkeypatch, capsys
+):
+    state_path = tmp_path / "missing-parent" / "cfp-state.json"
+    record = {"name": "Café", "status": "open"}
+    _stdin(monkeypatch, {"same": record, "new": None})
+    assert commit_state.main(["--state", str(state_path), "--snapshot"]) == 0
+    first = _out(capsys)
+    _stdin(monkeypatch, {"new": None, "same": dict(reversed(list(record.items())))})
+    assert commit_state.main(["--state", str(state_path), "--snapshot"]) == 0
+    assert _out(capsys) == first
+    assert set(first) == {"same", "new"}
+    assert all(len(value) == 64 for value in first.values())
+    assert first["same"] != first["new"]
+    assert not state_path.parent.exists()
+
+
+@pytest.mark.parametrize(
+    "payload", [{"_last_checked": {}}, {"a": []}, {"a": {"score": float("nan")}}]
+)
+def test_snapshot_refuses_unusable_sources(commit_state, tmp_path, monkeypatch, capsys, payload):
+    state_path = tmp_path / "state.json"
+    _stdin(monkeypatch, payload)
+    assert commit_state.main(["--state", str(state_path), "--snapshot"]) == 1
+    output = capsys.readouterr()
+    assert output.out == "" and output.err
+    assert not state_path.exists()
+
+
+def test_guarded_new_record_feeds_owner_schema_stamper(
+    commit_state, stamp_schema_version, tmp_path, monkeypatch, capsys
+):
+    state_path = tmp_path / "cfp-state.json"
+    expected = tmp_path / "expected.json"
+    _stdin(monkeypatch, {"new": None})
+    assert commit_state.main(["--snapshot"]) == 0
+    expected.write_text(json.dumps(_out(capsys)))
+    _stdin(monkeypatch, {"new": {"status": "open"}})
+    assert commit_state.main(["--state", str(state_path), "--expected-digests", str(expected)]) == 0
+    assert _out(capsys)["written"] == 1
+    assert stamp_schema_version.main(["--state", str(state_path)]) == 0
+    assert _out(capsys) == {"total": 1, "stamped": 1}
+    assert _read(state_path)["new"] == {"status": "open", "schema_version": 1}
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

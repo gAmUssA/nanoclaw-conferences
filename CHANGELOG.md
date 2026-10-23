@@ -6,7 +6,7 @@ All notable changes to this plugin are documented here.
 
 ### Preserve newer CFP decisions during delayed backfills (#91)
 
-The lock-owning state committer accepts optional per-record source fingerprints and checks them after obtaining its write lock. Changed records remain untouched and are listed in `skipped_changed`; owner actions retain precedence. This lets delayed model judgments land without overwriting newer notes or decisions. Unguarded callers retain their existing contract.
+The lock-owning state committer accepts optional per-record source fingerprints and checks them after obtaining its write lock. Changed records remain untouched and are listed in `skipped_changed`; owner actions retain precedence. This lets delayed model judgments land without overwriting newer notes or decisions. Unguarded callers retain their existing contract. A read-only CLI mode produces the canonical fingerprint snapshot, and the guarded procedure runs the owner schema stamper after committing.
 
 ## 0.1.59 — 2026-10-20
 
