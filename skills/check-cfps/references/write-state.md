@@ -76,3 +76,10 @@ Then apply priority rules (earlier wins):
    ```
 
    Only here, after the state write and both stampers succeeded — and only if the freshness stamper (item 12) exited 0. If the stamper exited 3 (verification not evidenced) or an earlier step failed and you stopped, do NOT clear — the saved stages let a same-day retry resume (`references/run-state.md`).
+
+
+## Guarded backfill commits
+
+For a delayed model backfill, retain the source record snapshot alongside its judgments. Invoke `scripts/commit-state.py` with `--expected-digests <snapshot-file>` and the proposed working set on stdin. The snapshot file maps every proposed slug to its original record fingerprint; the script's `record_digest` function owns the canonical encoding. An absent original record is represented by the fingerprint of JSON null.
+
+The committer compares each source under its existing state lock. Its guarded output adds `skipped_changed`, listing preserved records that changed after the snapshot. Re-read those sources before proposing another change. Missing or malformed fingerprints exit 1 without writing state. Without this flag, the existing Step 8 input/output contract remains unchanged. This guard grants no relevance verdict, freshness claim or operator authority.
