@@ -25,4 +25,5 @@ jobs:
     secrets:
       TESSL_TOKEN: ${{ secrets.TESSL_TOKEN }}
     with:
+      stamp-changelog: true
       skill-review-credit-outage: skip
