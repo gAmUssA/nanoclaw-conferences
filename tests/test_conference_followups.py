@@ -239,7 +239,9 @@ def test_no_proposal_approval_flag_or_duplicate_recipient_bypass(drafts):
 @pytest.mark.parametrize("script", ["prepare-intake.py", "build-card.py"])
 def test_bad_cli_input_is_bounded_and_never_echoes_private_text(script, monkeypatch, capsys):
     module = load(script)
-    monkeypatch.setattr(sys, "stdin", io.StringIO('{"private":"synthetic-sensitive-note"}'))
+    monkeypatch.setattr(
+        sys, "stdin", io.TextIOWrapper(io.BytesIO(b'{"private":"synthetic-sensitive-note"}'))
+    )
     assert module.main() == 2
     result = capsys.readouterr()
     assert not result.out
@@ -253,7 +255,9 @@ def test_malformed_mailbox_cli_is_bounded(script, intake, drafts, monkeypatch, c
         value["people"][0]["email"] = "@private-example.test"
     else:
         value["items"][0]["to"] = "@private-example.test"
-    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(value)))
+    monkeypatch.setattr(
+        sys, "stdin", io.TextIOWrapper(io.BytesIO(json.dumps(value).encode("utf-8")))
+    )
     assert load(script).main() == 2
     result = capsys.readouterr()
     assert not result.out
@@ -407,3 +411,76 @@ def test_deep_host_json_has_a_bounded_real_adapter_failure(adapter, monkeypatch,
     assert result.stdout == ""
     assert "Traceback" not in result.stderr
     assert len(result.stderr) < 200
+
+
+def test_large_grounded_unicode_intake_is_not_truncated(intake):
+    names = " ".join(f"Person{index:02d}" for index in range(40))
+    conversation = "ж" * 1900
+    quote = names + " " + conversation + " "
+    quote += "я" * (4000 - len(quote))
+    prefix = intake["event"]["name"] + " " + quote + " "
+    intake["source"]["text"] = prefix + "я" * (32000 - len(prefix))
+    intake["people"] = [
+        {"name": f"Person{index:02d}", "conversation": conversation, "quote": quote, "email": None}
+        for index in range(40)
+    ]
+    raw = json.dumps(intake, ensure_ascii=False).encode("utf-8")
+    assert len(raw.decode("utf-8")) > 128001
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "skills/conference-followups/scripts/prepare-intake.py")],
+        input=raw,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["source"]["text"] == intake["source"]["text"]
+    assert len(json.loads(result.stdout)["people"]) == 40
+
+
+def test_large_escaped_unicode_draft_batch_is_not_truncated(drafts):
+    drafts["items"] = [
+        {
+            "name": f"Person{index:02d}",
+            "to": f"person{index:02d}@example.test",
+            "subject": "Test " + "ж" * 100,
+            "body": "я" * 1300,
+        }
+        for index in range(40)
+    ]
+    raw = json.dumps(drafts, ensure_ascii=True).encode("utf-8")
+    assert len(raw) > 128001
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "skills/conference-followups/scripts/build-card.py")],
+        input=raw,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    output = json.loads(result.stdout)
+    assert len(output["cards"]) == 40
+    assert "я" * 1300 in output["cards"][-1]["text"]
+
+
+@pytest.mark.parametrize("script", ["prepare-intake.py", "build-card.py"])
+@pytest.mark.parametrize("suffix", ["at-cap", "past-cap", "valid-at-cap"])
+def test_real_cli_byte_cap_and_trailing_data_are_enforced(script, suffix, intake, drafts):
+    value = intake if script == "prepare-intake.py" else drafts
+    cap = load(script).MAX_INPUT_BYTES
+    prefix = json.dumps(value).encode("utf-8")
+    if suffix == "valid-at-cap":
+        raw = prefix + b" " * (cap - len(prefix))
+    else:
+        raw = prefix + b" " * (cap - len(prefix) - (suffix == "at-cap")) + b"X"
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "skills/conference-followups/scripts" / script)],
+        input=raw,
+        capture_output=True,
+        check=False,
+    )
+    if suffix == "valid-at-cap":
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout)["schema_version"] == 1
+    else:
+        assert result.returncode == 2
+        assert result.stdout == b""
+        assert b"Traceback" not in result.stderr and len(result.stderr) < 200

@@ -7,6 +7,9 @@ drafts. Each item has a unique canonical mailbox. Event occurrence and actual
 source message identity remain stable across retries. See callback-contract.md.
 stdout: {schema_version:1,cards:[{text,buttons,batch_id}]}; each card holds at
 most three items and fits host text/button limits. All means this card only.
+Input is UTF-8 JSON capped by MAX_INPUT_BYTES (8 MiB), covering compact escaped
+representations of the declared field/count bounds. Read cap+1 and reject excess
+before parsing; parse the complete admitted input, including trailing bytes.
 Exit2: invalid input or an item too large, empty stdout and bounded stderr.
 No network, state writes, owner identity or approval is supplied by this builder.
 """
@@ -21,6 +24,7 @@ from datetime import date
 from email.errors import HeaderParseError
 from email.headerregistry import Address
 
+MAX_INPUT_BYTES = 8 * 1024 * 1024
 ACTION = "conference.followup.v1"
 LABELS = {"send": "Send", "cancel": "Cancel", "edit": "Edit"}
 MAILBOX = re.compile(
@@ -204,7 +208,10 @@ def build(value: object) -> dict:
 
 def main() -> int:
     try:
-        result = build(json.loads(sys.stdin.read(128001)))
+        raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
+        if len(raw) > MAX_INPUT_BYTES:
+            raise ValueError("Reduce draft JSON within the documented input byte cap.")
+        result = build(json.loads(raw.decode("utf-8")))
     except (ValueError, TypeError, KeyError, HeaderParseError, RecursionError):
         print(
             "follow-up card: validate complete draft fields and host card limits before retrying.",

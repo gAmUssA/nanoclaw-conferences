@@ -9,6 +9,9 @@ Use a preceding owner message as additional source text only with its identity
 retained in the calling skill; this operation supplies neither identity nor consent.
 stdout: the validated input plus stable source_id, and each person's contact_key
 when an explicit email is present. Missing emails remain unresolved.
+Input is UTF-8 JSON capped by MAX_INPUT_BYTES (8 MiB), covering compact escaped
+representations of the declared field/count bounds. Read cap+1 and reject excess
+before parsing; parse the complete admitted input, including trailing bytes.
 Exit2: invalid input, empty stdout, bounded diagnostic. No state/network writes.
 """
 
@@ -22,6 +25,8 @@ import unicodedata
 from datetime import date
 from email.errors import HeaderParseError
 from email.headerregistry import Address
+
+MAX_INPUT_BYTES = 8 * 1024 * 1024
 
 
 def text(value: object, maximum: int) -> str:
@@ -148,7 +153,10 @@ def prepare(value: object) -> dict:
 
 def main() -> int:
     try:
-        value = json.loads(sys.stdin.read(128001))
+        raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
+        if len(raw) > MAX_INPUT_BYTES:
+            raise ValueError("Reduce intake JSON within the documented input byte cap.")
+        value = json.loads(raw.decode("utf-8"))
         result = prepare(value)
     except (ValueError, TypeError, KeyError, HeaderParseError, RecursionError):
         print(
