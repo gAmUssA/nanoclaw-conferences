@@ -5,9 +5,11 @@
   "private": false,
   "skills": [
     "skills/check-cfps",
-    "skills/nightly-cfp-sync"
+    "skills/nightly-cfp-sync",
+    "skills/conference-followups"
   ],
   "rules": [
-    "rules/nanoclaw-skill-root.md"
+    "rules/nanoclaw-skill-root.md",
+    "rules/conference-followup-callbacks.md"
   ]
 }

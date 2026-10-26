@@ -26,7 +26,7 @@ DECLARED = re.compile(r"^/home/node/\.claude/skills/tessl__[a-z0-9-]+/scripts/[A
 
 def _authored_scope() -> list[Path]:
     files: list[Path] = []
-    for skill in ("check-cfps", "nightly-cfp-sync"):
+    for skill in ("check-cfps", "nightly-cfp-sync", "conference-followups"):
         files.append(REPO_ROOT / "skills" / skill / "SKILL.md")
         files.extend(sorted((REPO_ROOT / "skills" / skill / "references").glob("*.md")))
     return [f for f in files if f.exists()]

@@ -2,6 +2,10 @@
 
 All notable changes to this plugin are documented here.
 
+### Conference follow-up intake and private hold protocol (#93)
+
+Add grounded free-text/voice-transcript intake, complete humanized draft cards with per-person and per-card Send/Cancel/Edit choices, and the version-1 host callback authority/adapter. Deterministic card pagination preserves all draft bytes and host limits. First-contact delivery requires the genuine host-private hold consumer and dedicated gateway identity; real owner intake, taps and provider acceptance remain open. No schedule or account operation is activated.
+
 ## 0.1.61 — 2026-10-23
 
 ### Preserve newer CFP decisions during delayed backfills (#91)
