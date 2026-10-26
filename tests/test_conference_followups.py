@@ -115,6 +115,25 @@ def test_intake_requires_exact_event_and_unambiguous_people(intake):
         module.prepare(intake)
 
 
+@pytest.mark.parametrize(
+    "address", ["bob.alex@example.test", "alex@example.test.org", "éalex@example.test"]
+)
+def test_intake_refuses_email_substrings_inside_another_address(intake, address):
+    intake["source"]["text"] = intake["source"]["text"].replace("alex@example.test", address)
+    intake["people"][0]["quote"] = intake["people"][0]["quote"].replace(
+        "alex@example.test", address
+    )
+    with pytest.raises(ValueError):
+        load("prepare-intake.py").prepare(intake)
+
+
+@pytest.mark.parametrize("field", ["id", "name"])
+def test_intake_uses_the_builder_event_limits(intake, field):
+    intake["event"][field] = "x" * 201
+    with pytest.raises(ValueError):
+        load("prepare-intake.py").prepare(intake)
+
+
 def test_complete_card_carries_exact_visible_effect_and_stable_reference(drafts):
     module = load("build-card.py")
     result = module.build(drafts)

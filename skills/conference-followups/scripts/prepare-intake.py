@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 from email.errors import HeaderParseError
 from email.headerregistry import Address
@@ -65,7 +66,11 @@ def prepare(value: object) -> dict:
         raise ValueError("Supply owner text or its voice transcript, never inferred audio content.")
     if not isinstance(event, dict) or set(event) != {"id", "name", "evidence"}:
         raise ValueError("Resolve the exact conference occurrence before drafting.")
-    event_id, name, evidence = (text(event[k], 500) for k in ("id", "name", "evidence"))
+    event_id, name, evidence = (
+        text(event["id"], 200),
+        text(event["name"], 200),
+        text(event["evidence"], 500),
+    )
     if evidence not in original or name not in evidence:
         raise ValueError("Quote the owner's actual conference evidence; clarify a missing event.")
     if not isinstance(people, list) or not 1 <= len(people) <= 40:
@@ -90,7 +95,10 @@ def prepare(value: object) -> dict:
                 "Ground every extracted person and conversation in an exact source quote."
             )
         email = None if person["email"] is None else mailbox(person["email"])
-        if email and email not in quote:
+        mailbox_neighbour = r"[\w.!#$%&'*+/=?^`{|}~@-]"
+        if email and not re.search(
+            rf"(?<!{mailbox_neighbour}){re.escape(email)}(?!{mailbox_neighbour})", quote
+        ):
             raise ValueError(
                 "Clarify the spoken address or resolve it separately from source evidence."
             )
