@@ -16,7 +16,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MOUNT = re.compile(r"/home/node/\.claude/skills/([^\s`'\")/]+)(/[^\s`'\")]*)?")
-COMMAND = re.compile(r"^tessl__(?P<skill>[a-z0-9-]+)/scripts/(?P<file>[A-Za-z0-9._-]+)$")
+COMMAND = re.compile(
+    r"^tessl__(?P<skill>[a-z0-9-]+)/(?P<kind>scripts|references)/(?P<file>[A-Za-z0-9._-]+)$"
+)
 INTERPRETERS = frozenset({"python", "python3", "bash", "sh", "node"})
 SCRIPT_SUFFIXES = (".py", ".sh", ".mjs", ".js")
 FENCE = re.compile(r"^\s*```")
@@ -45,19 +47,22 @@ def test_the_scan_finds_the_command_paths():
     assert len(_mount_paths()) >= 10
 
 
-def test_every_mount_path_names_a_shipped_skill_script():
+def test_every_mount_path_names_a_shipped_skill_script_or_explicit_reference():
     manifest = json.loads((REPO_ROOT / ".tessl-plugin" / "plugin.json").read_text(encoding="utf-8"))
     shipped = {Path(s).name for s in manifest["skills"]}
     for source, tail in _mount_paths():
         command = COMMAND.match(tail)
         assert command, (
-            f"{source.relative_to(REPO_ROOT)}: {tail} is not tessl__<skill>/scripts/<file>"
+            f"{source.relative_to(REPO_ROOT)}: {tail} is not a declared native script or reference"
         )
         assert command["skill"] in shipped, (
             f"{source.relative_to(REPO_ROOT)}: {command['skill']} is not shipped"
         )
-        target = REPO_ROOT / "skills" / command["skill"] / "scripts" / command["file"]
-        assert target.is_file(), f"{source.relative_to(REPO_ROOT)}: {tail} has no co-shipped script"
+        target = REPO_ROOT / "skills" / command["skill"] / command["kind"] / command["file"]
+        if command["kind"] == "references":
+            assert target.suffix == ".md"
+            assert target.relative_to(REPO_ROOT).as_posix() in source.read_text(encoding="utf-8")
+        assert target.is_file(), f"{source.relative_to(REPO_ROOT)}: {tail} has no co-shipped file"
 
 
 def test_the_rule_lists_every_shipped_skill():

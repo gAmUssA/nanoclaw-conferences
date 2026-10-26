@@ -12,6 +12,7 @@ applyTo: "skills/**/SKILL.md, skills/**/references/*.md — when writing or revi
 - Command blocks invoke a co-shipped script as `python3 /home/node/.claude/skills/tessl__<skill>/scripts/<file>`
 - `<skill>` is one of this plugin's skills: `check-cfps`, `nightly-cfp-sync`, `conference-followups`
 - `<file>` is a script under `skills/<skill>/scripts/` in this repository
+- Reference reads name the complete repository-relative source and its explicit corresponding `/home/node/.claude/skills/tessl__<skill>/references/<file>.md` path.
 - No other root, fallback or computed lookup is used
 
 ## Scope

@@ -6,7 +6,7 @@ mail directly. Use only the configured owner in the single main Telegram chat.
 
 ## Proposal and visible content
 
-`scripts/build-card.py` owns the schema-1 proposal and canonical card renderer.
+`skills/conference-followups/scripts/build-card.py` owns the schema-1 proposal and canonical card renderer.
 Its docstring declares input/output. Preserve complete recipient, subject and
 body on the same literal card as their Send/Cancel/Edit buttons. Do not
 truncate a draft or substitute a summary. Paginate into independently approved
@@ -29,7 +29,7 @@ authority before enabling these cards. Reject other mixed effects,
 missing/duplicate rows, changed labels or different copies of an item.
 
 Validate `batch_id` and the byte-identical visible text against
-`scripts/build-card.py`'s `digest` and `card` functions, whose docstrings own
+`skills/conference-followups/scripts/build-card.py`'s `digest` and `card` functions, whose docstrings own
 the computed-value and renderer contract. Keep the full digest; its shortened
 visible prefix is a reference, never an identity or approval.
 Require distinct case-insensitive ASCII
@@ -80,6 +80,18 @@ and per-recipient status/confirmation time/provider ids. It returns no draft
 or credential and performs no write or provider call. Unknown schemas and
 mismatched identities are unusable history, never permission to clear a gate.
 The effect handler always rechecks the private gate independently.
+
+On an owner request to check an uncertain delivery, call the main-only native
+`conference_followup_reconcile` with the same exact `event_date`, `event_name`
+and at most three explicit recipients. It can inspect only existing durable
+sending/uncertain attempts. Reuse their original persisted account, Message-ID,
+recipient and complete content; never accept replacement bytes from this query.
+It performs exact live Sent verification and records only a confirmed receipt.
+It never creates a draft, gate or message and never calls POST. Its schema-1
+status result adds `reconciliation` counts (`checked`, `confirmed`, `unconfirmed`)
+and a nullable bounded `diagnostic` for unavailable live evidence. An absent,
+ambiguous, unsupported or failed read remains unconfirmed, with its send gate
+closed. Report that result honestly and retry only the readback on owner request.
 
 Resolve `skills/conference-followups/scripts/conference-followup-callback-v1.py`
 inside the same installed provider as this declared rule and skill. Require

@@ -24,7 +24,10 @@ def run(args: list[str]) -> dict:
     node = Path(os.environ.get("NANOCLAW_CALLBACK_NODE", ""))
     if not root.is_absolute() or not node.is_absolute():
         raise ValueError("Restore host-selected absolute callback paths.")
-    root = root.resolve(strict=True)
+    try:
+        root = root.resolve(strict=True)
+    except RuntimeError as error:
+        raise ValueError("Restore an acyclic trusted host root.") from error
     target = root / "dist/conference-followup-callback-cli.js"
     if target.is_symlink() or not target.is_file() or not target.resolve().is_relative_to(root):
         raise ValueError("Install the regular conference callback consumer in the trusted host.")

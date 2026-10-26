@@ -361,3 +361,16 @@ def test_adapter_refuses_malformed_results_without_leaking_drafts(
     result = capsys.readouterr()
     assert not result.out
     assert "synthetic-private-draft" not in result.err
+
+
+def test_adapter_bounds_a_cyclic_host_root_deployment_error(adapter, monkeypatch, tmp_path, capsys):
+    module, _, _ = adapter
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop)
+    monkeypatch.setenv("NANOCLAW_CALLBACK_HOST_ROOT", str(loop))
+    monkeypatch.setattr(sys, "argv", ["adapter", "A" * 22])
+    assert module.main() == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "Traceback" not in output.err
+    assert len(output.err) < 200

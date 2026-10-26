@@ -22,7 +22,7 @@ Process steps in order. Do not skip ahead.
 - Extract people and conversation notes by meaning.
 - Do not infer an unheard transcript, invented email, conversation or meeting agreement.
 - Clarify missing event or ambiguous people.
-- Read the complete intake contract:
+- Read the complete intake contract at `/home/node/.claude/skills/tessl__conference-followups/references/intake.md` (repository source):
 
 ```text
 skills/conference-followups/references/intake.md
@@ -58,7 +58,8 @@ python3 /home/node/.claude/skills/tessl__conference-followups/scripts/prepare-in
 - Include no promised meeting, attachment or other effect absent from intake.
 - Invoke `Skill(skill: "tessl__blog-writer")` on its scoped humanization route before presenting any draft.
 - Preserve language and the complete draft.
-- Write the schema-1 builder input described in `skills/conference-followups/scripts/build-card.py` to `/tmp/conference-drafts.json`, then invoke:
+- Write the schema-1 builder input described in `skills/conference-followups/scripts/build-card.py` to `/tmp/conference-drafts.json`.
+- Invoke the builder:
 
 ```bash
 python3 /home/node/.claude/skills/tessl__conference-followups/scripts/build-card.py < /tmp/conference-drafts.json
@@ -69,7 +70,7 @@ python3 /home/node/.claude/skills/tessl__conference-followups/scripts/build-card
 
 ## Step 4 — Present the held choices
 
-- Read the complete callback contract:
+- Read the complete callback contract at `/home/node/.claude/skills/tessl__conference-followups/references/callback-contract.md` (repository source):
 
 ```text
 skills/conference-followups/references/callback-contract.md
@@ -80,7 +81,9 @@ skills/conference-followups/references/callback-contract.md
 - All refers only to that card.
 - Never imply approval of unseen pages.
 - The host privately holds these drafts and alone releases the selected mail after an actual configured-owner claim.
-- Do not invoke a direct Gmail writer, manufacture an approval field, remove refused buttons or weaken ASK policies.
+- Do not invoke a direct Gmail writer.
+- Never manufacture an approval field.
+- Preserve refused buttons and existing ASK policies.
 
 - An explicit pre-send refusal leaves the batch unsent: report the missing published consumer or dedicated gateway route.
 - An uncertain card delivery requires inspection of its original message before any resend.
@@ -102,6 +105,13 @@ skills/conference-followups/references/callback-contract.md
 - Consult the native contacted-log reader before claiming a new round.
 - Never replace that authority with an agent-written contact ledger.
 - Proceed immediately to Step 6.
+
+For an owner request to check an uncertain delivery, call
+`mcp__nanoclaw__conference_followup_reconcile` with its exact conference date/name
+and up to three explicit recipients. Report only its versioned confirmation or
+unconfirmed diagnostic. This operation checks the original attempt; it never
+creates a message or resends it. Missing/unsupported native recovery leaves the
+attempt uncertain and closed. Never substitute a Send card for recovery.
 
 ## Step 6 — Offer calendar holds
 
