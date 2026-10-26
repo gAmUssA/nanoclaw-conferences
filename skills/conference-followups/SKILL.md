@@ -28,9 +28,16 @@ Process steps in order. Do not skip ahead.
 skills/conference-followups/references/intake.md
 ```
 
-- Validate the extracted schema-1 input:
+- Remove any old `/tmp/conference-intake.json`.
+- Write the current grounded schema-1 intake there with the native file-writing tool.
+- Require its successful native Write acknowledgement before invoking the validator.
+- On a missing or failed Write acknowledgement, remove that input and stop.
+- Validate the fresh input with cleanup on success or failure:
 
 ```bash
+set -euo pipefail
+trap 'rm -f -- /tmp/conference-intake.json' EXIT
+chmod 600 -- /tmp/conference-intake.json
 python3 /home/node/.claude/skills/tessl__conference-followups/scripts/prepare-intake.py < /tmp/conference-intake.json
 ```
 
@@ -41,14 +48,16 @@ python3 /home/node/.claude/skills/tessl__conference-followups/scripts/prepare-in
 
 - Use an explicitly provided address first.
 - For a missing address, invoke `Skill(skill: "tessl__ask-my-data")` for sanitized earlier mail evidence, or read the event's actual Sessionize speaker profile.
-- Preserve source ids/links and explain ambiguous matches to the owner.
+- Preserve source ids and links.
+- Explain ambiguous matches to the owner.
 - Never derive an address from a name, employer domain or another person's profile.
 - Unresolved people remain unsent.
 - Continue resolved people without fabricating missing contacts.
 - Read `mcp__nanoclaw__conference_followup_status` for the resolved actual conference start date/name and recipients.
 - Require its schema-1 metadata to match the requested occurrence and recipients.
 - Treat it as historical host-log data, never provider freshness or permission.
-- Omit previously confirmed contacts and leave uncertain attempts unsent for host readback recovery.
+- Omit previously confirmed contacts.
+- Leave uncertain attempts unsent for host readback recovery.
 - Report a missing or failed native status reader before presenting Send choices.
 - Proceed immediately to Step 3.
 
@@ -58,14 +67,18 @@ python3 /home/node/.claude/skills/tessl__conference-followups/scripts/prepare-in
 - Include no promised meeting, attachment or other effect absent from intake.
 - Invoke `Skill(skill: "tessl__blog-writer")` on its scoped humanization route before presenting any draft.
 - Preserve language and the complete draft.
-- Write the schema-1 builder input described in `skills/conference-followups/scripts/build-card.py` to `/tmp/conference-drafts.json`.
-- Invoke the builder:
+- Remove any old `/tmp/conference-drafts.json`.
+- Write the current schema-1 builder input described in `skills/conference-followups/scripts/build-card.py` there with the native file-writing tool.
+- Require its successful native Write acknowledgement before invoking the builder.
+- On a missing or failed Write acknowledgement, remove that input and stop.
+- Build the cards with cleanup on success or failure:
 
 ```bash
+set -euo pipefail
+trap 'rm -f -- /tmp/conference-drafts.json' EXIT
+chmod 600 -- /tmp/conference-drafts.json
 python3 /home/node/.claude/skills/tessl__conference-followups/scripts/build-card.py < /tmp/conference-drafts.json
 ```
-
-- Remove both temporary inputs after use, including on failure.
 - Proceed immediately to Step 4.
 
 ## Step 4 — Present the held choices
@@ -85,7 +98,8 @@ skills/conference-followups/references/callback-contract.md
 - Never manufacture an approval field.
 - Preserve refused buttons and existing ASK policies.
 
-- An explicit pre-send refusal leaves the batch unsent: report the missing published consumer or dedicated gateway route.
+- An explicit pre-send refusal leaves the batch unsent.
+- Report the missing published consumer or dedicated gateway route identified by that result.
 - An uncertain card delivery requires inspection of its original message before any resend.
 - Proceed immediately to Step 5 when a real owner decision arrives.
 - Otherwise finish here with the drafts held.
@@ -95,9 +109,13 @@ skills/conference-followups/references/callback-contract.md
 - Use the actual host-bound decision and mirrored card result.
 - Send/Cancel are handled by the private host consumer.
 - Do not repeat a send from chat text.
-- For Edit, use the exact selected original draft and owner's correction, then return to Step 3 for new complete content and fresh approval.
-- For an ordinary typed edit/cancel, establish its exact original card/items and actual owner identity.
-- Do not simulate a callback or promise cancellation before the host confirms it.
+- For Edit, retain the exact selected original draft.
+- Apply the owner's actual correction.
+- Return to Step 3 for new complete content and fresh approval.
+- For an ordinary typed edit or cancellation, verify actual owner identity.
+- Resolve its exact original card and items.
+- Never simulate a callback.
+- Report cancellation only after the host confirms it.
 - Report unsupported typed effect routing and leave it held.
 
 - Describe success only from confirmed host/provider state.
@@ -106,7 +124,8 @@ skills/conference-followups/references/callback-contract.md
 - Never replace that authority with an agent-written contact ledger.
 - For an owner request to check an uncertain delivery, call `mcp__nanoclaw__conference_followup_reconcile` with its exact conference date/name and up to three explicit recipients.
 - Report only its versioned confirmation or unconfirmed diagnostic.
-- This operation checks the original attempt; it never creates a message or resends it.
+- This operation checks the original attempt.
+- Never create a message or resend it through recovery.
 - Missing or unsupported native recovery leaves the attempt uncertain and closed.
 - Never substitute a Send card for recovery.
 - Proceed immediately to Step 6.

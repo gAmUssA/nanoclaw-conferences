@@ -6,6 +6,8 @@ import copy
 import importlib.util
 import io
 import json
+import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -505,3 +507,31 @@ def test_malformed_address_real_cli_has_only_its_bounded_diagnostic(
     assert result.returncode == 2
     assert result.stdout == b""
     assert b"Traceback" not in result.stderr and len(result.stderr) < 200
+
+
+@pytest.mark.parametrize(
+    "script,slot",
+    [("prepare-intake.py", "conference-intake.json"), ("build-card.py", "conference-drafts.json")],
+)
+@pytest.mark.parametrize("valid", [False, True])
+def test_authored_input_command_always_cleans_its_current_private_file(
+    script, slot, valid, intake, drafts, tmp_path
+):
+    skill = (ROOT / "skills/conference-followups/SKILL.md").read_text()
+    commands = re.findall(r"```bash\n(.*?)```", skill, flags=re.S)
+    command = next(block for block in commands if f"scripts/{script} <" in block)
+    target = tmp_path / slot
+    value = intake if script == "prepare-intake.py" else drafts
+    target.write_text(json.dumps(value) if valid else '{"invalid":true}')
+    command = command.replace(f"/tmp/{slot}", shlex.quote(str(target)))
+    native = "/home/node/.claude/skills/tessl__conference-followups/scripts/" + script
+    command = command.replace(
+        "python3 " + native,
+        shlex.quote(sys.executable)
+        + " "
+        + shlex.quote(str(ROOT / "skills/conference-followups/scripts" / script)),
+    )
+    result = subprocess.run(["bash", "-c", command], capture_output=True, text=True, check=False)
+    assert result.returncode == (0 if valid else 2)
+    assert not target.exists()
+    assert "Traceback" not in result.stderr
