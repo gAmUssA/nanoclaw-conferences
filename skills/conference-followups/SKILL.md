@@ -68,7 +68,9 @@ python3 /home/node/.claude/skills/tessl__conference-followups/scripts/prepare-in
 - Omit previously confirmed contacts.
 - Leave uncertain attempts unsent for host readback recovery.
 - Report a missing or failed native status reader before presenting Send choices.
-- Proceed immediately to Step 3.
+- If no eligible recipient remains, report unresolved, already-confirmed and uncertain contacts.
+- With no eligible recipient, proceed directly to Step 6 only for an independent calendar-hold request; otherwise finish here without building a card.
+- Proceed immediately to Step 3 only when at least one eligible recipient remains.
 
 ## Step 3 — Humanize the drafts
 

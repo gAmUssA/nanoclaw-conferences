@@ -12,9 +12,58 @@ from __future__ import annotations
 import json
 import os
 import re
+import selectors
 import subprocess
 import sys
+import time
 from pathlib import Path
+
+# Limit both streams while reading, not after a potentially unbounded capture.
+MAX_STDOUT_BYTES = 2048
+MAX_STDERR_BYTES = 8192
+HOST_TIMEOUT_SECONDS = 240
+
+
+def run_bounded(args: list[str], *, cwd: Path, env: dict[str, str]) -> str:
+    """Run one host callback with bounded byte streams and a single deadline."""
+    with subprocess.Popen(
+        args,
+        cwd=cwd,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ) as child:
+        try:
+            with selectors.DefaultSelector() as streams:
+                assert child.stdout is not None and child.stderr is not None
+                streams.register(child.stdout, selectors.EVENT_READ, MAX_STDOUT_BYTES)
+                streams.register(child.stderr, selectors.EVENT_READ, MAX_STDERR_BYTES)
+                buffers = {child.stdout.fileno(): bytearray(), child.stderr.fileno(): bytearray()}
+                deadline = time.monotonic() + HOST_TIMEOUT_SECONDS
+                while streams.get_map():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(args, HOST_TIMEOUT_SECONDS)
+                    for key, _ in streams.select(remaining):
+                        buffer = buffers[key.fd]
+                        chunk = os.read(key.fd, min(4096, key.data - len(buffer) + 1))
+                        if not chunk:
+                            streams.unregister(key.fileobj)
+                            continue
+                        buffer.extend(chunk)
+                        if len(buffer) > key.data:
+                            raise ValueError("Restore the bounded host callback output contract.")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(args, HOST_TIMEOUT_SECONDS)
+                if child.wait(timeout=remaining):
+                    raise ValueError("Inspect the private host hold before retrying.")
+                return buffers[child.stdout.fileno()].decode("utf-8")
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
 
 
 def run(args: list[str]) -> dict:
@@ -31,20 +80,13 @@ def run(args: list[str]) -> dict:
     target = root / "dist/conference-followup-callback-cli.js"
     if target.is_symlink() or not target.is_file() or not target.resolve().is_relative_to(root):
         raise ValueError("Install the regular conference callback consumer in the trusted host.")
-    result = subprocess.run(
+    output = run_bounded(
         [str(node), str(target), args[0]],
         cwd=root,
         # Reserve stdout for the result; host warnings/errors remain on stderr.
         env={**os.environ, "LOG_LEVEL": "warn"},
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        timeout=240,
-        check=False,
     )
-    if result.returncode or len(result.stdout.encode("utf-8")) > 2048:
-        raise ValueError("Inspect the private host hold before retrying.")
-    value = json.loads(result.stdout)
+    value = json.loads(output)
     if (
         not isinstance(value, dict)
         or set(value) != {"status", "text"}

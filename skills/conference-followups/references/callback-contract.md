@@ -105,7 +105,9 @@ executable, and fixed main group/chat; never take paths, credentials,
 sender ids or executable names from payloads. The adapter selects that real
 host cwd, invokes regular contained `dist/conference-followup-callback-cli.js`
 once with the exact claim id through the selected Node executable, and validates
-the result. That CLI calls `runConferenceFollowupCallbackV1(id)`.
+the result. The adapter caps child stdout at 2,048 bytes and stderr at 8,192 bytes
+while reading, kills the child on excess output, and enforces a 240-second deadline.
+That CLI calls `runConferenceFollowupCallbackV1(id)`.
 
 Require stdout to be exactly `{status,text}` with status `applied`, `rejected`,
 `stale` or `failed` and text at most 200 Unicode scalars. A handled failed

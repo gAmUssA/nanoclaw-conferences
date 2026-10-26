@@ -308,16 +308,13 @@ def test_adapter_invokes_one_fixed_host_target_and_retains_handled_failure(adapt
 
     def invoke(args, **kwargs):
         calls.append((args, kwargs))
-        return subprocess.CompletedProcess(
-            args, 0, json.dumps({"status": "failed", "text": "Inspect the held item."}), ""
-        )
+        return json.dumps({"status": "failed", "text": "Inspect the held item."})
 
-    monkeypatch.setattr(module.subprocess, "run", invoke)
+    monkeypatch.setattr(module, "run_bounded", invoke)
     assert module.run(["A" * 22])["status"] == "failed"
     assert len(calls) == 1
     assert calls[0][0] == ["/host-owned/node", str(target), "A" * 22]
     assert calls[0][1]["cwd"] == root
-    assert calls[0][1]["stdin"] == subprocess.DEVNULL
     assert calls[0][1]["env"]["LOG_LEVEL"] == "warn"
 
 
@@ -328,7 +325,7 @@ def test_adapter_rejects_unbound_commands_before_execution(adapter, monkeypatch,
     def refuse(*_args, **_kwargs):
         pytest.fail("invalid claim must not start a process")
 
-    monkeypatch.setattr(module.subprocess, "run", refuse)
+    monkeypatch.setattr(module, "run_bounded", refuse)
     with pytest.raises(ValueError):
         module.run(args)
 
@@ -358,11 +355,9 @@ def test_adapter_refuses_malformed_results_without_leaking_drafts(
     module, _, _ = adapter
     monkeypatch.setattr(sys, "argv", ["adapter", "A" * 22])
     monkeypatch.setattr(
-        module.subprocess,
-        "run",
-        lambda args, **kwargs: subprocess.CompletedProcess(
-            args, 0, output, "synthetic-private-draft"
-        ),
+        module,
+        "run_bounded",
+        lambda args, **kwargs: output,
     )
     assert module.main() == 1
     result = capsys.readouterr()
@@ -549,3 +544,68 @@ def test_authored_input_command_preserves_status_and_reports_cleanup_failure(
     if cleanup_fails:
         assert "private input cleanup failed" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("stream,limit", [(1, 2048), (2, 8192)])
+def test_adapter_kills_oversized_real_child_without_echoing_output(
+    adapter, monkeypatch, stream, limit
+):
+    _, root, target = adapter
+    target.write_text(
+        "import os, signal\n"
+        "from pathlib import Path\n"
+        "Path('child.pid').write_text(str(os.getpid()))\n"
+        f"os.write({stream}, b'private-output-' + b'x' * {limit})\n"
+        "signal.pause()\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NANOCLAW_CALLBACK_NODE", sys.executable)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(
+                ROOT / "skills/conference-followups/scripts" / "conference-followup-callback-v1.py"
+            ),
+            "A" * 22,
+        ],
+        capture_output=True,
+        timeout=10,
+    )
+    assert result.returncode == 1
+    assert result.stdout == b""
+    assert b"private-output" not in result.stderr
+    assert b"Traceback" not in result.stderr
+    assert 0 < len(result.stderr) < 200
+    with pytest.raises(ProcessLookupError):
+        os.kill(int((root / "child.pid").read_text()), 0)
+
+
+def test_adapter_real_child_allows_exact_stream_bounds(adapter, monkeypatch):
+    module, _, target = adapter
+    value = {"status": "applied", "text": "Synthetic fixture only."}
+    output = json.dumps(value).encode().ljust(2048)
+    target.write_text(
+        "import os\n"
+        "assert os.read(0, 1) == b''\n"
+        f"os.write(2, b'x' * 8192)\nos.write(1, {output!r})\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NANOCLAW_CALLBACK_NODE", sys.executable)
+    assert module.run(["A" * 22]) == value
+
+
+def test_adapter_deadline_kills_a_real_child(adapter, monkeypatch):
+    module, root, target = adapter
+    target.write_text("import signal\nsignal.pause()\n", encoding="utf-8")
+    monkeypatch.setenv("NANOCLAW_CALLBACK_NODE", sys.executable)
+    monkeypatch.setattr(module, "HOST_TIMEOUT_SECONDS", 0)
+    with pytest.raises(subprocess.TimeoutExpired):
+        module.run(["A" * 22])
+
+
+def test_no_eligible_recipient_finishes_without_empty_card_build():
+    skill = (ROOT / "skills/conference-followups/SKILL.md").read_text()
+    step_two = skill.split("## Step 2", 1)[1].split("## Step 3", 1)[0]
+    assert "If no eligible recipient remains" in step_two
+    assert "otherwise finish here without building a card" in step_two
+    assert "Step 3 only when at least one eligible recipient remains" in step_two
