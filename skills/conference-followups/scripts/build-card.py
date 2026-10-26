@@ -205,7 +205,7 @@ def build(value: object) -> dict:
 def main() -> int:
     try:
         result = build(json.loads(sys.stdin.read(128001)))
-    except (ValueError, TypeError, KeyError, HeaderParseError):
+    except (ValueError, TypeError, KeyError, HeaderParseError, RecursionError):
         print(
             "follow-up card: validate complete draft fields and host card limits before retrying.",
             file=sys.stderr,

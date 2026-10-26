@@ -104,14 +104,12 @@ skills/conference-followups/references/callback-contract.md
 - A pending, interrupted or uncertain send is not resent, even under a new batch id.
 - Consult the native contacted-log reader before claiming a new round.
 - Never replace that authority with an agent-written contact ledger.
+- For an owner request to check an uncertain delivery, call `mcp__nanoclaw__conference_followup_reconcile` with its exact conference date/name and up to three explicit recipients.
+- Report only its versioned confirmation or unconfirmed diagnostic.
+- This operation checks the original attempt; it never creates a message or resends it.
+- Missing or unsupported native recovery leaves the attempt uncertain and closed.
+- Never substitute a Send card for recovery.
 - Proceed immediately to Step 6.
-
-For an owner request to check an uncertain delivery, call
-`mcp__nanoclaw__conference_followup_reconcile` with its exact conference date/name
-and up to three explicit recipients. Report only its versioned confirmation or
-unconfirmed diagnostic. This operation checks the original attempt; it never
-creates a message or resends it. Missing/unsupported native recovery leaves the
-attempt uncertain and closed. Never substitute a Send card for recovery.
 
 ## Step 6 — Offer calendar holds
 

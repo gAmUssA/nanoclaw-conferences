@@ -374,3 +374,36 @@ def test_adapter_bounds_a_cyclic_host_root_deployment_error(adapter, monkeypatch
     assert output.out == ""
     assert "Traceback" not in output.err
     assert len(output.err) < 200
+
+
+@pytest.mark.parametrize("script", ["prepare-intake.py", "build-card.py"])
+def test_deep_json_input_has_a_bounded_real_cli_failure(script):
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "skills/conference-followups/scripts" / script)],
+        input="[" * 1001 + "0" + "]" * 1001,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "Traceback" not in result.stderr
+    assert len(result.stderr) < 200
+
+
+def test_deep_host_json_has_a_bounded_real_adapter_failure(adapter, monkeypatch, tmp_path):
+    module, _, _ = adapter
+    node = tmp_path / "synthetic-node"
+    node.write_text("#!" + sys.executable + "\nprint('[' * 1001 + '0' + ']' * 1001)\n")
+    node.chmod(0o700)
+    monkeypatch.setenv("NANOCLAW_CALLBACK_NODE", str(node))
+    result = subprocess.run(
+        [sys.executable, module.__file__, "A" * 22],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "Traceback" not in result.stderr
+    assert len(result.stderr) < 200

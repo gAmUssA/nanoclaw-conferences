@@ -60,7 +60,7 @@ def run(args: list[str]) -> dict:
 def main() -> int:
     try:
         value = run(sys.argv[1:])
-    except (ValueError, OSError, subprocess.SubprocessError):
+    except (ValueError, RecursionError, OSError, subprocess.SubprocessError):
         print(
             "Conference follow-up callback unavailable; "
             "inspect the private host hold before retrying.",

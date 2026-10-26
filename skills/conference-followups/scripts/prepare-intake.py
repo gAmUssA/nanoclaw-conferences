@@ -150,7 +150,7 @@ def main() -> int:
     try:
         value = json.loads(sys.stdin.read(128001))
         result = prepare(value)
-    except (ValueError, TypeError, KeyError, HeaderParseError):
+    except (ValueError, TypeError, KeyError, HeaderParseError, RecursionError):
         print(
             "conference intake: restore schema-1 input and exact source quotes before drafting.",
             file=sys.stderr,
