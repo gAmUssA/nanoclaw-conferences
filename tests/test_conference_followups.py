@@ -484,3 +484,24 @@ def test_real_cli_byte_cap_and_trailing_data_are_enforced(script, suffix, intake
         assert result.returncode == 2
         assert result.stdout == b""
         assert b"Traceback" not in result.stderr and len(result.stderr) < 200
+
+
+@pytest.mark.parametrize("script", ["prepare-intake.py", "build-card.py"])
+@pytest.mark.parametrize("address", ["a@", "a", "a@.", "a@[", "a@()", "a@b."])
+def test_malformed_address_real_cli_has_only_its_bounded_diagnostic(
+    script, address, intake, drafts
+):
+    value = intake if script == "prepare-intake.py" else drafts
+    if script == "prepare-intake.py":
+        value["people"][0]["email"] = address
+    else:
+        value["items"][0]["to"] = address
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "skills/conference-followups/scripts" / script)],
+        input=json.dumps(value).encode("utf-8"),
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert result.stdout == b""
+    assert b"Traceback" not in result.stderr and len(result.stderr) < 200

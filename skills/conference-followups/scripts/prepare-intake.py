@@ -27,6 +27,11 @@ from email.errors import HeaderParseError
 from email.headerregistry import Address
 
 MAX_INPUT_BYTES = 8 * 1024 * 1024
+MAILBOX = re.compile(
+    r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
+    r"@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*"
+)
 
 
 def text(value: object, maximum: int) -> str:
@@ -46,9 +51,13 @@ def mailbox(value: object) -> str:
         not value.isascii()
         or value != value.strip()
         or any(ord(c) < 33 or ord(c) == 127 for c in value)
+        or not MAILBOX.fullmatch(value)
     ):
         raise ValueError("Confirm one plain recipient email address.")
-    address = Address(addr_spec=value)
+    try:
+        address = Address(addr_spec=value)
+    except (IndexError, HeaderParseError, ValueError):
+        raise ValueError("Confirm one complete plain recipient email address.") from None
     if not address.username or not address.domain or address.addr_spec != value:
         raise ValueError("Confirm one complete plain recipient email address.")
     return value

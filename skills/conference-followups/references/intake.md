@@ -1,7 +1,7 @@
 # Intake and contact evidence
 
 The owner supplies free text or a voice transcript; the model extracts its
-meaning. `prepare-intake.py` validates exact quotes and structural bounds,
+meaning. `skills/conference-followups/scripts/prepare-intake.py` validates exact quotes and structural bounds,
 not a natural-language grammar. Its JSON contains no approval or send flag.
 
 Use the actual conference start date as canonical `event.id` / `event_id`

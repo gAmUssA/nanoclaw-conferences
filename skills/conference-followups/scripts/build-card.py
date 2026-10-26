@@ -176,10 +176,14 @@ def build(value: object) -> dict:
             text(raw[k], limit) for k, limit in (("name", 120), ("to", 254), ("subject", 160))
         )
         body = text(raw["body"], 1600, multiline=True)
-        address = Address(addr_spec=to)
+        if not MAILBOX.fullmatch(to):
+            raise ValueError("Resolve one plain recipient mailbox before showing a send choice.")
+        try:
+            address = Address(addr_spec=to)
+        except (IndexError, HeaderParseError, ValueError):
+            raise ValueError("Resolve one complete plain recipient mailbox.") from None
         if (
-            not MAILBOX.fullmatch(to)
-            or not address.username
+            not address.username
             or not address.domain
             or address.addr_spec != to
             or any(c.isspace() for c in to)
