@@ -31,10 +31,12 @@ def run(args: list[str]) -> dict:
     result = subprocess.run(
         [str(node), str(target), args[0]],
         cwd=root,
+        # Reserve stdout for the result; host warnings/errors remain on stderr.
+        env={**os.environ, "LOG_LEVEL": "warn"},
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
-        timeout=90,
+        timeout=240,
         check=False,
     )
     if result.returncode or len(result.stdout.encode("utf-8")) > 2048:

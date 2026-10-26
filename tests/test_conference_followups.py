@@ -34,7 +34,7 @@ def intake():
             "text": "Synthetic Summit 2024. Alex alex@example.test: discussed JVM tooling.",
         },
         "event": {
-            "id": "synthetic-summit-2024",
+            "id": "2024-06-12",
             "name": "Synthetic Summit 2024",
             "evidence": "Synthetic Summit 2024",
         },
@@ -53,7 +53,7 @@ def intake():
 def drafts():
     return {
         "schema_version": 1,
-        "event_id": "synthetic-summit-2024",
+        "event_id": "2024-06-12",
         "event_name": "Synthetic Summit 2024",
         "source_message_id": "owner-intake-12",
         "items": [
@@ -132,6 +132,21 @@ def test_intake_uses_the_builder_event_limits(intake, field):
     intake["event"][field] = "x" * 201
     with pytest.raises(ValueError):
         load("prepare-intake.py").prepare(intake)
+
+
+@pytest.mark.parametrize("punctuation", [".", "!", "?"])
+def test_intake_accepts_sentence_final_mailbox_punctuation(intake, punctuation):
+    quote = f"Alex: discussed JVM tooling. Email alex@example.test{punctuation}"
+    intake["source"]["text"] = "Synthetic Summit 2024. " + quote
+    intake["people"][0]["quote"] = quote
+    assert load("prepare-intake.py").prepare(intake)["people"][0]["email"] == "alex@example.test"
+
+
+@pytest.mark.parametrize("event_date", ["event-random-id", "2024-02-30", "20240612"])
+def test_builder_requires_a_visible_real_canonical_occurrence_date(drafts, event_date):
+    drafts["event_id"] = event_date
+    with pytest.raises(ValueError):
+        load("build-card.py").build(drafts)
 
 
 def test_complete_card_carries_exact_visible_effect_and_stable_reference(drafts):
@@ -296,6 +311,7 @@ def test_adapter_invokes_one_fixed_host_target_and_retains_handled_failure(adapt
     assert calls[0][0] == ["/host-owned/node", str(target), "A" * 22]
     assert calls[0][1]["cwd"] == root
     assert calls[0][1]["stdin"] == subprocess.DEVNULL
+    assert calls[0][1]["env"]["LOG_LEVEL"] == "warn"
 
 
 @pytest.mark.parametrize("args", [[], ["bad"], ["A" * 22, "extra"]])

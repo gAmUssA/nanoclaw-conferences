@@ -18,6 +18,8 @@ import hashlib
 import json
 import re
 import sys
+import unicodedata
+from datetime import date
 from email.errors import HeaderParseError
 from email.headerregistry import Address
 
@@ -52,6 +54,28 @@ def digest(value: object) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def contains_mailbox(quote: str, email: str) -> bool:
+    """A complete literal mailbox token; sentence-final .?! may delimit it."""
+
+    def neighbour(character: str) -> bool:
+        return (
+            bool(character)
+            and not character.isspace()
+            and (
+                unicodedata.category(character)[0] in "LMNC" or character in ".!#$%&'*+/=?^_`{|}~@-"
+            )
+        )
+
+    for match in re.finditer(re.escape(email), quote):
+        before = quote[match.start() - 1] if match.start() else ""
+        after = quote[match.end() : match.end() + 1]
+        following = quote[match.end() + 1 : match.end() + 2]
+        sentence_end = after in (".", "?", "!") and not neighbour(following)
+        if not neighbour(before) and (not neighbour(after) or sentence_end):
+            return True
+    return False
+
+
 def prepare(value: object) -> dict:
     if not isinstance(value, dict) or set(value) != {"schema_version", "source", "event", "people"}:
         raise ValueError("Provide one schema-1 source, event and extracted people array.")
@@ -71,6 +95,8 @@ def prepare(value: object) -> dict:
         text(event["name"], 200),
         text(event["evidence"], 500),
     )
+    if date.fromisoformat(event_id).isoformat() != event_id:
+        raise ValueError("Resolve the actual conference start date as canonical YYYY-MM-DD.")
     if evidence not in original or name not in evidence:
         raise ValueError("Quote the owner's actual conference evidence; clarify a missing event.")
     if not isinstance(people, list) or not 1 <= len(people) <= 40:
@@ -95,10 +121,7 @@ def prepare(value: object) -> dict:
                 "Ground every extracted person and conversation in an exact source quote."
             )
         email = None if person["email"] is None else mailbox(person["email"])
-        mailbox_neighbour = r"[\w.!#$%&'*+/=?^`{|}~@-]"
-        if email and not re.search(
-            rf"(?<!{mailbox_neighbour}){re.escape(email)}(?!{mailbox_neighbour})", quote
-        ):
+        if email and not contains_mailbox(quote, email):
             raise ValueError(
                 "Clarify the spoken address or resolve it separately from source evidence."
             )
@@ -107,7 +130,18 @@ def prepare(value: object) -> dict:
             raise ValueError("Resolve duplicate person mentions before preparing the batch.")
         seen.add(identity)
         prepared.append(
-            {**person, "contact_key": digest([event_id, email.casefold()]) if email else None}
+            {
+                **person,
+                "contact_key": digest(
+                    [
+                        event_id,
+                        re.sub(r" +", " ", unicodedata.normalize("NFC", name).strip()).lower(),
+                        email.lower(),
+                    ]
+                )
+                if email
+                else None,
+            }
         )
     return {**value, "people": prepared, "source_id": digest([source_id, original])}
 

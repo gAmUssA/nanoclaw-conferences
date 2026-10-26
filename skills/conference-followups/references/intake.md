@@ -4,9 +4,11 @@ The owner supplies free text or a voice transcript; the model extracts its
 meaning. `prepare-intake.py` validates exact quotes and structural bounds,
 not a natural-language grammar. Its JSON contains no approval or send flag.
 
-Keep the exact conference occurrence id stable across later contact rounds.
-Use an actual event record/link plus its occurrence, or the owner's explicit
-event identity; an event name reused annually is insufficient. The event
+Use the actual conference start date as canonical `event.id` / `event_id`
+in `YYYY-MM-DD` form, with its actual conference name. Keep both stable across
+later contact rounds. Resolve the date from actual owner context or event
+records; a name reused annually is insufficient. Date interpretation stays
+with the model and cited evidence; ask when it is unknown. The event
 evidence and each person's quote come from the source text. If needed,
 combine the explicitly identified owner context with the new intake before
 validation while retaining all original message identities in the working

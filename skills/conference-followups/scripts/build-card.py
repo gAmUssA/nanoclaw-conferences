@@ -17,6 +17,7 @@ import hashlib
 import json
 import re
 import sys
+from datetime import date
 from email.errors import HeaderParseError
 from email.headerregistry import Address
 
@@ -80,6 +81,7 @@ def card(event_id: str, event_name: str, source: str, items: list[dict]) -> dict
     }
     lines = [
         f"Conference follow-ups: {event_name}",
+        f"Conference starts: {event_id}",
         f"Reference: {batch_id[:12]}",
         "Send all / Cancel all / Edit all apply only to this card.",
     ]
@@ -157,6 +159,8 @@ def build(value: object) -> dict:
     event_id, event_name, source = (
         text(value[k], 200) for k in ("event_id", "event_name", "source_message_id")
     )
+    if date.fromisoformat(event_id).isoformat() != event_id:
+        raise ValueError("Resolve the actual conference start date as canonical YYYY-MM-DD.")
     if not isinstance(value["items"], list) or not 1 <= len(value["items"]) <= 40:
         raise ValueError("Provide one to forty grounded follow-up drafts.")
     items = []

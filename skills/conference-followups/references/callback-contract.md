@@ -16,6 +16,8 @@ Each payload has exactly `schema_version:1`, `batch_id`, `event_id`,
 `event_name`, `source_message_id`, `kind` and `decision`. An item payload also
 has `index` and `item`; item has exactly `name`, `to`, `subject`, `body`.
 Kind is `item` or `batch`; effect decision is `send` or `cancel`.
+`event_id` is the canonical actual conference start date displayed with its
+name on the card. A changed batch/request id supplies no new occurrence.
 Indices start at 1 and are contiguous. Each item has one effect row containing
 Send N and Cancel N in that order. The next row contains Send all and
 Cancel all. The final independent answer row contains Edit N for each item,
@@ -70,6 +72,14 @@ Typed edits/cancellations use the ordinary owner workflow; never forge a tap
 or write the private callback store from an agent.
 
 ## Host execution and gateway
+
+`conference_followup_status` is a main-only read operation for the exact
+`event_date`, `event_name` and selected `recipients`. Its schema-1 result
+contains the matching occurrence, host `observed_at`, `source: host-log`,
+and per-recipient status/confirmation time/provider ids. It returns no draft
+or credential and performs no write or provider call. Unknown schemas and
+mismatched identities are unusable history, never permission to clear a gate.
+The effect handler always rechecks the private gate independently.
 
 Resolve `skills/conference-followups/scripts/conference-followup-callback-v1.py`
 inside the same installed provider as this declared rule and skill. Require
