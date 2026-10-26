@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+from email.errors import HeaderParseError
 from email.headerregistry import Address
 
 
@@ -107,7 +108,7 @@ def main() -> int:
     try:
         value = json.loads(sys.stdin.read(128001))
         result = prepare(value)
-    except (ValueError, TypeError, KeyError):
+    except (ValueError, TypeError, KeyError, HeaderParseError):
         print(
             "conference intake: restore schema-1 input and exact source quotes before drafting.",
             file=sys.stderr,

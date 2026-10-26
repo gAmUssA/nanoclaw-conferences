@@ -15,11 +15,24 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
+from email.errors import HeaderParseError
 from email.headerregistry import Address
 
 ACTION = "conference.followup.v1"
 LABELS = {"send": "Send", "cancel": "Cancel", "edit": "Edit"}
+MAILBOX = re.compile(
+    r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
+    r"@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*"
+)
+
+
+def button(label: str, payload: dict) -> dict:
+    if payload["decision"] == "edit":
+        return {"label": label, "action": "owner.answer.v1", "payload": {"label": label}}
+    return {"label": label, "action": ACTION, "payload": payload}
 
 
 def text(value: object, maximum: int, *, multiline: bool = False) -> str:
@@ -40,12 +53,23 @@ def text(value: object, maximum: int, *, multiline: bool = False) -> str:
 
 
 def digest(value: object) -> str:
+    """SHA-256 of UTF-8 JSON: sorted object keys, compact separators, literal Unicode.
+
+    card() hashes [event_id,event_name,source_message_id,items] for batch_id.
+    A shortened displayed prefix never substitutes for this complete identity.
+    """
     return hashlib.sha256(
         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
 
 def card(event_id: str, event_name: str, source: str, items: list[dict]) -> dict:
+    """Render the complete literal review text and exact effect/answer rows.
+
+    The text begins with event and reference lines plus the card-local All
+    boundary, followed by each numbered name, To, Subject and complete body.
+    Native host acceptance compares this actual output with its consumer.
+    """
     batch_id = digest([event_id, event_name, source, items])
     base = {
         "schema_version": 1,
@@ -73,29 +97,28 @@ def card(event_id: str, event_name: str, source: str, items: list[dict]) -> dict
         )
         rows.append(
             [
-                {
-                    "label": f"{LABELS[decision]} {index}",
-                    "action": ACTION,
-                    "payload": {
+                button(
+                    f"{LABELS[decision]} {index}",
+                    {
                         **base,
                         "kind": "item",
                         "decision": decision,
                         "index": index,
                         "item": item,
                     },
-                }
-                for decision in LABELS
+                )
+                for decision in ("send", "cancel")
             ]
         )
     rows.append(
         [
-            {
-                "label": LABELS[decision] + " all",
-                "action": ACTION,
-                "payload": {**base, "kind": "batch", "decision": decision},
-            }
-            for decision in LABELS
+            button(LABELS[decision] + " all", {**base, "kind": "batch", "decision": decision})
+            for decision in ("send", "cancel")
         ]
+    )
+    rows.append(
+        [button(f"Edit {index}", {"decision": "edit"}) for index in range(1, len(items) + 1)]
+        + [button("Edit all", {"decision": "edit"})]
     )
     return {"text": "\n".join(lines), "buttons": rows, "batch_id": batch_id}
 
@@ -147,7 +170,7 @@ def build(value: object) -> dict:
         body = text(raw["body"], 1600, multiline=True)
         address = Address(addr_spec=to)
         if (
-            not to.isascii()
+            not MAILBOX.fullmatch(to)
             or not address.username
             or not address.domain
             or address.addr_spec != to
@@ -178,7 +201,7 @@ def build(value: object) -> dict:
 def main() -> int:
     try:
         result = build(json.loads(sys.stdin.read(128001)))
-    except (ValueError, TypeError, KeyError):
+    except (ValueError, TypeError, KeyError, HeaderParseError):
         print(
             "follow-up card: validate complete draft fields and host card limits before retrying.",
             file=sys.stderr,

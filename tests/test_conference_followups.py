@@ -124,10 +124,21 @@ def test_complete_card_carries_exact_visible_effect_and_stable_reference(drafts)
     assert "Subject: JVM tooling at Synthetic Summit" in card["text"]
     assert "apply only to this card" in card["text"]
     assert [[b["label"] for b in row] for row in card["buttons"]] == [
-        ["Send 1", "Cancel 1", "Edit 1"],
-        ["Send all", "Cancel all", "Edit all"],
+        ["Send 1", "Cancel 1"],
+        ["Send all", "Cancel all"],
+        ["Edit 1", "Edit all"],
     ]
     assert card == module.build(copy.deepcopy(drafts))["cards"][0]
+    assert card["buttons"][-1][0] == {
+        "label": "Edit 1",
+        "action": "owner.answer.v1",
+        "payload": {"label": "Edit 1"},
+    }
+    assert card["buttons"][-1][-1] == {
+        "label": "Edit all",
+        "action": "owner.answer.v1",
+        "payload": {"label": "Edit all"},
+    }
     original = card["batch_id"]
     drafts["items"][0]["body"] += " Thanks."
     assert module.build(drafts)["cards"][0]["batch_id"] != original
@@ -142,8 +153,8 @@ def test_six_people_paginate_without_truncation_or_implied_unseen_approval(draft
     ]
     cards = module.build(drafts)["cards"]
     assert len(cards) == 2
-    assert [len(card["buttons"]) - 1 for card in cards] == [3, 3]
-    actual = [row[0]["payload"]["item"] for card in cards for row in card["buttons"][:-1]]
+    assert [len(card["buttons"]) - 2 for card in cards] == [3, 3]
+    actual = [row[0]["payload"]["item"] for card in cards for row in card["buttons"][:-2]]
     assert actual == drafts["items"]
     assert all(module.fits(card) for card in cards)
 
@@ -160,7 +171,7 @@ def test_unicode_drafts_split_at_real_utf16_and_utf8_host_limits(drafts):
     assert all(
         row[0]["payload"]["item"]["body"] == "😀" * 500
         for card in cards
-        for row in card["buttons"][:-1]
+        for row in card["buttons"][:-2]
     )
 
 
@@ -199,6 +210,44 @@ def test_bad_cli_input_is_bounded_and_never_echoes_private_text(script, monkeypa
     result = capsys.readouterr()
     assert not result.out
     assert "synthetic-sensitive-note" not in result.err
+
+
+@pytest.mark.parametrize("script", ["prepare-intake.py", "build-card.py"])
+def test_malformed_mailbox_cli_is_bounded(script, intake, drafts, monkeypatch, capsys):
+    value = intake if script == "prepare-intake.py" else drafts
+    if script == "prepare-intake.py":
+        value["people"][0]["email"] = "@private-example.test"
+    else:
+        value["items"][0]["to"] = "@private-example.test"
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(value)))
+    assert load(script).main() == 2
+    result = capsys.readouterr()
+    assert not result.out
+    assert "private-example.test" not in result.err
+
+
+def test_published_rule_retains_required_read_and_complete_provider_reference():
+    manifest = json.loads((ROOT / ".tessl-plugin/plugin.json").read_text())
+    assert "rules/conference-followup-callbacks.md" in manifest["rules"]
+    assert "skills/conference-followups" in manifest["skills"]
+    rule = (ROOT / "rules/conference-followup-callbacks.md").read_text()
+    reference = ROOT / "skills/conference-followups/references/callback-contract.md"
+    assert "read `skills/conference-followups/references/callback-contract.md` in full" in rule
+    assert "owning installed" in rule and "missing or unreadable" in rule
+    assert "Never load it through an `@` import" in rule
+    assert reference.is_file()
+    for boundary in (
+        "Private hold and decisions",
+        "Host execution and gateway",
+        "sending",
+        "uncertain",
+        "Cancel",
+        "Edit",
+        "Sent",
+        "configured owner",
+        "OneCLI",
+    ):
+        assert boundary in reference.read_text()
 
 
 @pytest.fixture

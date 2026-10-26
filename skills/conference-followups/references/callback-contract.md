@@ -15,19 +15,24 @@ cards when the host's limits require it; All always means only that card.
 Each payload has exactly `schema_version:1`, `batch_id`, `event_id`,
 `event_name`, `source_message_id`, `kind` and `decision`. An item payload also
 has `index` and `item`; item has exactly `name`, `to`, `subject`, `body`.
-Kind is `item` or `batch`; decision is `send`, `cancel` or `edit`.
-Indices start at 1 and are contiguous. Each item has one row containing
-Send N, Cancel N, Edit N in that order. The last row contains Send all,
-Cancel all, Edit all. Every button uses this action. Reject mixed effects,
+Kind is `item` or `batch`; effect decision is `send` or `cancel`.
+Indices start at 1 and are contiguous. Each item has one effect row containing
+Send N and Cancel N in that order. The next row contains Send all and
+Cancel all. The final independent answer row contains Edit N for each item,
+then Edit all, with two to four choices. Edit buttons use the actual `owner.answer.v1` action
+with exactly `{"label":"<same visible label>"}`; this generic consumer returns
+the validated owner's reply to the agent with its original question. Send and
+Cancel use `conference.followup.v1`. Require the installed owner-answer
+authority before enabling these cards. Reject other mixed effects,
 missing/duplicate rows, changed labels or different copies of an item.
 
-Recompute `batch_id` as SHA-256 of UTF-8 canonical JSON
-`[event_id,event_name,source_message_id,items]`, recursively sorting object
-keys, using compact separators and unescaped Unicode. Render the exact text
-from those payloads through the builder's format and require byte-identical
-text. Keep the full digest; its visible twelve-character prefix is a reference,
-never an identity or approval. Require distinct case-insensitive ASCII
-mailboxes, complete bounded plain text and the builder's measured host limits.
+Validate `batch_id` and the byte-identical visible text against
+`scripts/build-card.py`'s `digest` and `card` functions, whose docstrings own
+the computed-value and renderer contract. Keep the full digest; its shortened
+visible prefix is a reference, never an identity or approval.
+Require distinct case-insensitive ASCII
+mailboxes (unquoted ASCII dot-atom local part and DNS-label domain), complete
+bounded plain text and the builder's measured host limits.
 
 ## Private hold and decisions
 
@@ -54,9 +59,12 @@ cannot confirm different content. Record confirmed provider ids in the host
 log for deduplication on the next round.
 
 Cancel closes only unreleased items. A sending, sent or uncertain item cannot
-be described as cancelled. Edit retires unreleased choices and returns the
-selected original item identities for new humanization and fresh approval;
-it never changes approved bytes or sends. Already attempted or contacted
+be described as cancelled. Edit retires its native answer row and returns the
+selected original item identities for new humanization and fresh approval.
+Before releasing any item, inspect actual private row decisions: an Edit N
+claim fences that original item and Edit all fences every original item,
+including when another row's Send all is selected later. An Edit request
+never changes approved bytes or sends. Already attempted or contacted
 recipients remain gated across new cards. Expired cards never release mail.
 Typed edits/cancellations use the ordinary owner workflow; never forge a tap
 or write the private callback store from an agent.
