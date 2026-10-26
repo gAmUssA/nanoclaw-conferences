@@ -6,6 +6,7 @@ import copy
 import importlib.util
 import io
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -514,8 +515,9 @@ def test_malformed_address_real_cli_has_only_its_bounded_diagnostic(
     [("prepare-intake.py", "conference-intake.json"), ("build-card.py", "conference-drafts.json")],
 )
 @pytest.mark.parametrize("valid", [False, True])
-def test_authored_input_command_always_cleans_its_current_private_file(
-    script, slot, valid, intake, drafts, tmp_path
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_authored_input_command_preserves_status_and_reports_cleanup_failure(
+    script, slot, valid, cleanup_fails, intake, drafts, tmp_path
 ):
     skill = (ROOT / "skills/conference-followups/SKILL.md").read_text()
     commands = re.findall(r"```bash\n(.*?)```", skill, flags=re.S)
@@ -531,7 +533,19 @@ def test_authored_input_command_always_cleans_its_current_private_file(
         + " "
         + shlex.quote(str(ROOT / "skills/conference-followups/scripts" / script)),
     )
-    result = subprocess.run(["bash", "-c", command], capture_output=True, text=True, check=False)
+    env = dict(os.environ)
+    if cleanup_fails:
+        binaries = tmp_path / "bin"
+        binaries.mkdir()
+        remove = binaries / "rm"
+        remove.write_text("#!/bin/sh\nexit 1\n")
+        remove.chmod(0o700)
+        env["PATH"] = str(binaries) + os.pathsep + env.get("PATH", "")
+    result = subprocess.run(
+        ["bash", "-c", command], capture_output=True, text=True, check=False, env=env
+    )
     assert result.returncode == (0 if valid else 2)
-    assert not target.exists()
+    assert target.exists() is cleanup_fails
+    if cleanup_fails:
+        assert "private input cleanup failed" in result.stderr
     assert "Traceback" not in result.stderr

@@ -31,17 +31,26 @@ skills/conference-followups/references/intake.md
 - Remove any old `/tmp/conference-intake.json`.
 - Write the current grounded schema-1 intake there with the native file-writing tool.
 - Require its successful native Write acknowledgement before invoking the validator.
-- On a missing or failed Write acknowledgement, remove that input and stop.
+- On a missing or failed Write acknowledgement, remove that input.
+- Stop on a missing or failed Write acknowledgement.
 - Validate the fresh input with cleanup on success or failure:
 
 ```bash
 set -euo pipefail
-trap 'rm -f -- /tmp/conference-intake.json' EXIT
+cleanup_conference_intake() {
+  if ! rm -f -- /tmp/conference-intake.json; then
+    printf '%s\n' 'Conference private input cleanup failed; remove /tmp/conference-intake.json before continuing.' >&2
+  fi
+  return 0
+}
+trap cleanup_conference_intake EXIT
 chmod 600 /tmp/conference-intake.json
 python3 /home/node/.claude/skills/tessl__conference-followups/scripts/prepare-intake.py < /tmp/conference-intake.json
 ```
 
 - Require successful output before drafting.
+- Stop if private input cleanup failed.
+- Resume only after its actual cleanup succeeds.
 - Proceed immediately to Step 2.
 
 ## Step 2 — Resolve the contacts
@@ -67,27 +76,36 @@ python3 /home/node/.claude/skills/tessl__conference-followups/scripts/prepare-in
 - Include no promised meeting, attachment or other effect absent from intake.
 - Invoke `Skill(skill: "tessl__blog-writer")` on its scoped humanization route before presenting any draft.
 - Preserve language and the complete draft.
-- Remove any old `/tmp/conference-drafts.json`.
-- Write the current schema-1 builder input described in `skills/conference-followups/scripts/build-card.py` there with the native file-writing tool.
-- Require its successful native Write acknowledgement before invoking the builder.
-- On a missing or failed Write acknowledgement, remove that input and stop.
-- Build the cards with cleanup on success or failure:
-
-```bash
-set -euo pipefail
-trap 'rm -f -- /tmp/conference-drafts.json' EXIT
-chmod 600 /tmp/conference-drafts.json
-python3 /home/node/.claude/skills/tessl__conference-followups/scripts/build-card.py < /tmp/conference-drafts.json
-```
-- Proceed immediately to Step 4.
-
-## Step 4 — Present the held choices
-
 - Read the complete callback contract at `/home/node/.claude/skills/tessl__conference-followups/references/callback-contract.md` (repository source):
 
 ```text
 skills/conference-followups/references/callback-contract.md
 ```
+
+- Remove any old `/tmp/conference-drafts.json`.
+- Write the current schema-1 builder input defined by that contract there with the native file-writing tool.
+- Require its successful native Write acknowledgement before invoking the builder.
+- On a missing or failed Write acknowledgement, remove that input.
+- Stop on a missing or failed Write acknowledgement.
+- Build the cards with cleanup on success or failure:
+
+```bash
+set -euo pipefail
+cleanup_conference_drafts() {
+  if ! rm -f -- /tmp/conference-drafts.json; then
+    printf '%s\n' 'Conference private input cleanup failed; remove /tmp/conference-drafts.json before continuing.' >&2
+  fi
+  return 0
+}
+trap cleanup_conference_drafts EXIT
+chmod 600 /tmp/conference-drafts.json
+python3 /home/node/.claude/skills/tessl__conference-followups/scripts/build-card.py < /tmp/conference-drafts.json
+```
+- Stop if private input cleanup failed.
+- Resume only after its actual cleanup succeeds.
+- Proceed immediately to Step 4.
+
+## Step 4 — Present the held choices
 
 - Send each builder-produced literal `text` with its complete `buttons` through `mcp__nanoclaw__send_message` in main, without sender override.
 - Preserve each actual delivery receipt.
@@ -116,7 +134,8 @@ skills/conference-followups/references/callback-contract.md
 - Resolve its exact original card and items.
 - Never simulate a callback.
 - Report cancellation only after the host confirms it.
-- Report unsupported typed effect routing and leave it held.
+- Report unsupported typed effect routing.
+- Preserve the actual host hold state.
 
 - Describe success only from confirmed host/provider state.
 - A pending, interrupted or uncertain send is not resent, even under a new batch id.
