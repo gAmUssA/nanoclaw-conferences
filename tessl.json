@@ -7,6 +7,12 @@
     },
     "jbaruch/coding-policy": {
       "version": "latest"
+    },
+    "jbaruch/nanoclaw-admin": {
+      "version": "latest"
+    },
+    "jbaruch/blog-writer": {
+      "version": "latest"
     }
   }
 }
