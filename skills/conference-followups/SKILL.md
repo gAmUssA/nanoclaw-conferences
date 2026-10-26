@@ -37,7 +37,7 @@ skills/conference-followups/references/intake.md
 ```bash
 set -euo pipefail
 trap 'rm -f -- /tmp/conference-intake.json' EXIT
-chmod 600 -- /tmp/conference-intake.json
+chmod 600 /tmp/conference-intake.json
 python3 /home/node/.claude/skills/tessl__conference-followups/scripts/prepare-intake.py < /tmp/conference-intake.json
 ```
 
@@ -76,7 +76,7 @@ python3 /home/node/.claude/skills/tessl__conference-followups/scripts/prepare-in
 ```bash
 set -euo pipefail
 trap 'rm -f -- /tmp/conference-drafts.json' EXIT
-chmod 600 -- /tmp/conference-drafts.json
+chmod 600 /tmp/conference-drafts.json
 python3 /home/node/.claude/skills/tessl__conference-followups/scripts/build-card.py < /tmp/conference-drafts.json
 ```
 - Proceed immediately to Step 4.
