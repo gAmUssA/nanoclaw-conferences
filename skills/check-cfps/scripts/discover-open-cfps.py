@@ -31,6 +31,10 @@ Config (host-injected container env, see README): `SESSIONIZE_SPEAKER_KEY`
 and `SESSIONIZE_API_BASE` (optional override of the
 `https://sessionize.com/api/universal` base, for tests).
 
+With --allow-missing-key, absent configuration emits an explicit not_configured
+source status, null counts and a warning, then exits 0. Configured API errors
+remain failures. This mode does not claim that Sessionize returned no CFPs.
+
 Output (stdout, JSON):
   {"candidates": [{...Step 2 candidate...}, ...],
    "counts": {"events_seen", "after_filter", "skipped_existing",
@@ -167,11 +171,27 @@ def main(argv: list[str] | None = None) -> int:
         description="Deterministic Sessionize open-CFP discovery for check-cfps Step 2."
     )
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE_PATH)
+    parser.add_argument("--allow-missing-key", action="store_true")
     args = parser.parse_args(argv)
 
     api_key = os.environ.get("SESSIONIZE_SPEAKER_KEY")
     if not api_key:
         sys.stderr.write("discover-open-cfps: SESSIONIZE_SPEAKER_KEY is unset\n")
+        if args.allow_missing_key:
+            print(
+                json.dumps(
+                    {
+                        "candidates": [],
+                        "counts": None,
+                        "source_status": "not_configured",
+                        "warning": (
+                            "Sessionize discovery unavailable: SESSIONIZE_SPEAKER_KEY is unset; "
+                            "public feeds only."
+                        ),
+                    }
+                )
+            )
+            return 0
         return 1
     base = os.environ.get("SESSIONIZE_API_BASE") or DEFAULT_API_BASE
 

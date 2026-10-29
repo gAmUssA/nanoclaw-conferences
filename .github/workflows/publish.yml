@@ -20,9 +20,11 @@ permissions:
 
 jobs:
   publish:
+    if: github.repository_owner == 'jbaruch'
     uses: jbaruch/coding-policy/.github/workflows/publish-plugin.yml@af116ebf18a7c46a672bf176064908736bc8ac28
     # Forward only the token the reusable workflow declares (not `inherit`).
     secrets:
       TESSL_TOKEN: ${{ secrets.TESSL_TOKEN }}
     with:
+      stamp-changelog: true
       skill-review-credit-outage: skip

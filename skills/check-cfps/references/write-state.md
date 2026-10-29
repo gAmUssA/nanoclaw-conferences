@@ -22,7 +22,7 @@ Reads newline-separated URLs from stdin; emits `{<input_url>: <existing_slug_or_
 Then apply priority rules (earlier wins):
 
 1. **`user_actioned: true`** — preserve the entry's decision + metadata fields untouched: the bot does not refresh `updated`/`last_verified` (rules 5/6 apply only to entries actively written this run, not to preserved `user_actioned` ones) and does not re-tag `matched_interests`. The ONLY field stamped on these is `schema_version` (owner metadata, rule 10).
-2. **Sticky (`shown_in_brief: true`)** — preserve `status` and the relevance notes in `bot_notes`. Allowed updates: `deadline`, `city`, `conf_date`, `updated`, `last_verified`, `stale` + `⚠️ STALE DATA` prefix. The helper in item 9 applies the permitted exact-date warning update to these preserved notes. Exception: Step 5 confirmed closed or online overrides stickiness.
+2. **Sticky (`shown_in_brief: true`)** — preserve `status` and the relevance notes in `bot_notes`. Allowed updates: `deadline`, `city`, `conf_date`, `updated`, `last_verified`, `stale` + `⚠️ STALE DATA` prefix. The helper in item 9 applies the permitted exact-date warning update to these preserved notes. Exceptions: a Step 5 confirmed closed or online result, a Step 6 geo-gate `excluded` verdict, and a Step 6 Jev `dismiss` verdict override stickiness. The initial Step 6 backfill may also apply an evidenced Sonnet dismissal when the prior notes lack `Jev relevance v1:`; retain the prescribed dismissal prefix. A Jev outage or unresolved model case never overrides stickiness.
 3. **Existing `open`/`approved` without sticky** — update status, `bot_notes`, metadata. Downgrade-to-dismissed MUST set `status: "dismissed"`.
 4. **New entries** — write status and `bot_notes` from Steps 6–7. Inherit `_verified_this_run: true` from Step 5. New entries that fail Sessionize verification are dropped.
 5. Set `updated` to today on every written entry.
@@ -76,3 +76,30 @@ Then apply priority rules (earlier wins):
    ```
 
    Only here, after the state write and both stampers succeeded — and only if the freshness stamper (item 12) exited 0. If the stamper exited 3 (verification not evidenced) or an earlier step failed and you stopped, do NOT clear — the saved stages let a same-day retry resume (`references/run-state.md`).
+
+
+## Guarded backfill commits
+
+For a delayed model backfill, retain the original source record mapping alongside its judgments. Produce the fingerprint file with the read-only snapshot mode:
+
+```bash
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/commit-state.py --snapshot < original-records.json > expected-digests.json
+```
+
+Stdin maps each proposed slug to its original record or JSON null for an absent source. Stdout maps those slugs to canonical fingerprints; the script owns their encoding. Exit 1 emits a repair diagnostic and no snapshot. Snapshot mode never opens the state file.
+
+Supply the proposed working set on stdin to the guarded commit:
+
+```bash
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/commit-state.py --expected-digests expected-digests.json < proposed-records.json
+```
+
+The committer checks the original sources under its state lock. Its guarded output adds `skipped_changed`, listing preserved records that changed after the snapshot. Re-read those sources before proposing another change. Missing or malformed fingerprints exit 1 without writing state. Without the flag, the Step 8 input/output contract remains unchanged.
+
+After a successful guarded write, run the owner's schema stamper from item 11:
+
+```bash
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/stamp-schema-version.py
+```
+
+Abort on stamper failure. The guarded procedure grants no relevance verdict, freshness claim or operator authority. It does not advance the cadence cursor or freshness heartbeat.

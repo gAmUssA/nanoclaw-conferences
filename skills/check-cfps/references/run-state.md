@@ -57,26 +57,26 @@ Stage-name validation is defined by `STAGE_RE` in `skills/check-cfps/scripts/run
 
 ```bash
 # Start or resume. Resets across a UTC-day boundary; resumes within the same day.
-python3 .../run-state.py begin
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/run-state.py begin
 # -> {"resume": false, "run_date": "2026-06-13", "completed": []}
 # -> {"resume": true,  "run_date": "2026-06-13", "completed": ["fetch", "verify"]}
 
 # Persist a stage artifact (JSON on stdin).
-echo '<artifact json>' | python3 .../run-state.py save verify
+echo '<artifact json>' | python3 /home/node/.claude/skills/tessl__check-cfps/scripts/run-state.py save verify
 # -> {"saved": "verify"}
 
 # Reload a saved stage on resume.
-python3 .../run-state.py load verify          # prints the artifact; exit 2 if never saved
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/run-state.py load verify          # prints the artifact; exit 2 if never saved
 
 # Clear on success (end of Step 8, after the state write + stampers).
-python3 .../run-state.py done                 # -> {"cleared": true}
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/run-state.py done                 # -> {"cleared": true}
 
 # Drop failed stages (and the driver's evidence marker) so a same-day
 # retry re-runs them instead of reloading failed output. Cascades to every
 # stage completed after the earliest named one (later stages derive from
 # earlier ones), so `completed` always stays a resumable prefix. Idempotent —
 # a stage with no artifact on disk is reported under "absent".
-python3 .../run-state.py invalidate verify working_set verify-evidence
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/run-state.py invalidate verify working_set verify-evidence
 # -> {"invalidated": ["verify", "working_set", "verify-evidence"], "absent": []}
 ```
 

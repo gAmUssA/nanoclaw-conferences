@@ -1,6 +1,6 @@
 ---
 name: check-cfps
-description: Finds open CFPs relevant to Baruch across Java/AI/developer conferences and maintains persistent CFP state (sent/dismissed/remind) in cfp-state.json. Use when Baruch asks about upcoming conferences, call for papers, speaking opportunities, CFP deadlines, or where to submit a talk proposal.
+description: Finds open CFPs relevant to Viktor across Java/AI/developer conferences and maintains persistent CFP state (sent/dismissed/remind) in cfp-state.json. Use when Viktor asks about upcoming conferences, call for papers, speaking opportunities, CFP deadlines, or where to submit a talk proposal.
 ---
 
 # Check CFPs (with State Management)
@@ -34,7 +34,7 @@ python3 /home/node/.claude/skills/tessl__check-cfps/scripts/run-state.py begin
 - `{"resume": false}` — fresh run. Proceed from Step 2.
 - `{"resume": true, "completed": [...]}` — a run begun earlier today was interrupted. For each stage already in `completed`, reload its artifact with `run-state.py load <stage>` instead of recomputing it, and resume at the first step whose stage is absent.
 
-**Scheduled override:** after `begin`, invalidate prior pipeline artifacts, ignore its saved `completed` list, and proceed from Step 2. Abort on a non-zero exit. Initialize this invocation's `research_warnings` to an empty array.
+**Scheduled override:** after `begin`, invalidate prior pipeline artifacts, ignore its saved `completed` list, and proceed from Step 2. Abort on a non-zero exit. Initialize this invocation's `research_warnings` and `policy_warnings` to empty arrays.
 
 ```bash
 python3 /home/node/.claude/skills/tessl__check-cfps/scripts/run-state.py invalidate fetch candidates verify working_set verify-evidence
@@ -51,10 +51,10 @@ Resume is best-effort — stages are idempotent and Step 5 re-verifies the full 
 ## Step 2 — Sessionize speaker API candidates
 
 ```bash
-python3 /home/node/.claude/skills/tessl__check-cfps/scripts/discover-open-cfps.py
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/discover-open-cfps.py --allow-missing-key
 ```
 
-Discovers new Sessionize open-CFP candidates deterministically (needs the host-injected `SESSIONIZE_SPEAKER_KEY`; reads `/workspace/group/cfp-state.json` to skip already-tracked slugs). Do NOT call the Sessionize API or parse its response inline — that is the script's job (jbaruch/nanoclaw-conferences#9). Parse stdout `{candidates, counts}` and carry `candidates` into the pool. Abort if the script exits non-zero (an outage must not read as "0 new CFPs"). Do not write to state here. The candidate shape and filter rules are the script's contract (`scripts/discover-open-cfps.py` docstring).
+Discovers new Sessionize open-CFP candidates deterministically (needs the host-injected `SESSIONIZE_SPEAKER_KEY`; reads `/workspace/group/cfp-state.json` to skip already-tracked slugs). Do NOT call the Sessionize API or parse its response inline — that is the script's job (jbaruch/nanoclaw-conferences#9). When `source_status` is `not_configured`, carry its warning into `policy_warnings` and show it in the final output; continue with public feeds without claiming Sessionize coverage. Otherwise parse stdout `{candidates, counts}` and carry `candidates` into the pool. Abort if the script exits non-zero (an outage must not read as "0 new CFPs"). Do not write to state here. The candidate shape and filter rules are the script's contract (`scripts/discover-open-cfps.py` docstring).
 
 ## Step 3 — Run fetch-and-filter script
 
@@ -68,7 +68,7 @@ Parse JSON output: `cfps`, `warnings`, `sources`, `feed_failure`, `checked_at`. 
 
 **Scheduled:** use the candidate pool from Steps 2–3 without web gap search. Continue to the checkpoint below, including when a fetch warning suggests web fallback. If Step 3's `feed_failure` is `true`, report a technical failure and finish here — that flag is the branch point, not the warning text; a valid empty feed and a partially usable one are both `false`.
 
-**Interactive:** read `/workspace/trusted/user_professional.md` for Baruch's current speaking topics. Construct 2–3 web search queries from his actual topics combined with CFP discovery terms. Add new CFPs not already in the list (dedup by conference name). Apply hard filters (no online/virtual, no excluded locations). Do not apply relevance filtering yet.
+**Interactive:** read `/workspace/trusted/user_professional.md` for Viktor's current speaking topics. Construct 2–3 web search queries from his actual topics combined with CFP discovery terms. Add new CFPs not already in the list (dedup by conference name). Apply hard filters (no online/virtual, no excluded locations). Do not apply relevance filtering yet.
 
 **Checkpoint:** once the full candidate pool is assembled (Steps 2–4 merged and deduped), `save candidates` (the merged pool) before Step 5.
 
@@ -122,20 +122,49 @@ Step 5 covers the full cohort each run. See `references/contracts.md` "Budget-lo
 
 ## Step 6 — Source routing, blocklist, and AI relevance analysis
 
+**Geo gate — every source, before Tier 1:** pipe every candidate in the working set, as a JSON array of `{slug, country, location, city, is_online}`, to:
+
+```bash
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/geo-gate.py --policy /workspace/group/cfp-geo-policy.json
+```
+
+It returns a parallel array of `{slug, verdict, country, reason}`:
+
+- `excluded` → `status: "dismissed"`, with `bot_notes` set to its `reason` (`Auto-dismissed: Geo: …`).
+- An `excluded` candidate skips Tiers 1–3.
+- A `user_actioned: true` entry is never changed by the geo gate.
+- `allowed` or `unresolved` → continue to Tier 1. An unresolved country is never a reason to dismiss.
+- Exit 1 (policy missing or malformed): add its stderr to this run's `policy_warnings`, then run Tiers 1–3 without the geo gate.
+- Exit 2: the input was not an array of objects with a `slug`; fix it and rerun.
+
+Country resolution and the verdict rules: `geo-gate.py` docstring.
+
 **Tier 1 — javaconferences.org auto-approve:** `status: "approved"`, `bot_notes: "Auto-approved: javaconferences.org source"`.
 
 **Tier 2 — Blocklist:** Check conference name (case-insensitive) against `_blocked_prefixes`. Match → `status: "dismissed"`, `bot_notes: "Auto-dismissed: blocked prefix '[prefix]'"`.
 
-**Tier 3 — AI relevance analysis:** Analyze remaining CFPs using all available data — Sessionize description (ground truth), tags, past speakers, audience type, format. Read `/workspace/trusted/user_professional.md` for Baruch's topics and apply criteria from `/workspace/group/RELEVANCE-CRITERIA.md`.
+**Tier 3 — Jev relevance gate:** read the procedure below, resolved from the installed `tessl__check-cfps` skill root as `references/jev-relevance.md`:
 
-- Sessionize description available → use as ground truth.
-- No description and ambiguous name → interactive runs use targeted web search before deciding; scheduled runs decide from fetched metadata and local criteria, stating uncertainty in `bot_notes` without inventing evidence.
-- Sessionize-sourced candidates → lean relevant when topic is ambiguous; dismiss only if description clearly shows irrelevance.
-- Scheduled non-Sessionize candidates with insufficient topic evidence → record the name and uncertainty in `research_warnings`. For a new candidate, omit it from the state write without persisting a dismissal; keep it eligible for later discovery. For an existing row, preserve its prior relevance decision and notes while applying this run's verified metadata and travel result. Missing evidence alone never justifies a downgrade. Do not claim the conference is off-topic without evidence.
+```text
+skills/check-cfps/references/jev-relevance.md
+```
 
-Relevant → `status: "open"`, `bot_notes` citing specific evidence. Irrelevant → `status: "dismissed"`, `bot_notes: "Dismissed: [reason]"`.
+Run its helper on every remaining candidate, including stored `open`/`approved` rows. Use the live speaker profile and local relevance criteria. Sessionize's universal API has no descriptions or tags; the helper combines existing metadata with bounded public website meta descriptions.
 
-**The "lean relevant when ambiguous" latitude applies ONLY when Tier 3 actually ran on the candidate.** Tier 3 covers every candidate that reaches it; see `references/contracts.md` "Budget-low is not a defer reason."
+- `open` → `status: "open"`, `bot_notes` = the helper's reason.
+- `dismiss` → `status: "dismissed"`, `bot_notes` = the helper's substantive reason, including scores.
+- `preserve` → keep the entry unchanged.
+- `model` → analyze the candidate using Sonnet 5.5 or newer.
+- Give Sonnet the profile, local criteria, descriptions, tags, audience and speakers available in the helper's evidence.
+- Interactive runs may research missing evidence.
+- Scheduled runs use the helper's fetched evidence and local data.
+- Never use Haiku for this judgment.
+- Helper exit 1 → send the full Tier 3 cohort to Sonnet and report the diagnostic.
+- Helper exit 2 → fix the input and rerun.
+
+For a model case, cite specific evidence in `bot_notes`; missing evidence stays uncertain. Scheduled new candidates with insufficient evidence stay eligible for discovery without a persisted dismissal or `open` claim. For an existing row, preserve its prior relevance decision while refreshing verified metadata and travel results. Add uncertain names to `research_warnings`. There is no automatic relevance default for Sessionize.
+
+Tier 3 covers the full cohort every run. On first rollout, rescore all existing `open`/`approved` rows through these same steps; preserve user actions, geo dismissals and Tier 1 approval. A Jev `dismiss` overrides `shown_in_brief` stickiness in Step 8. During that initial backfill, an evidenced Sonnet dismissal also overrides stickiness for a row whose prior notes lack `Jev relevance v1:`; prefix the new substantive notes with `Dismissed: Jev relevance v1: Sonnet —`. A Jev error or uncertain model judgment never overrides stickiness.
 
 **Priority interest tagging (prefilter → arbitrate).** First check the policy: if `/workspace/group/cfp-priorities.json` is absent, empty, or carries no `priority_interests` (no policy), delete `matched_interests` from every non-`user_actioned` `open`/`approved` entry you process and skip the rest of this paragraph — no policy ⇒ pin everything. (Don't infer "no policy" from an empty prefilter result; a present policy that simply matched nothing also returns no proposals.)
 
@@ -173,11 +202,11 @@ After writing cfp-state.json, emit the run's verification report inside an `<int
 
 ```
 <internal>
-{"checked_at": "<ISO>", "new_candidates_added": N, "existing_verified": N, "existing_verify_failed": N, "verification": "live"|"none-required"|"skipped", "research_warnings": ["<candidate name: missing topic evidence>"]}
+{"checked_at": "<ISO>", "new_candidates_added": N, "existing_verified": N, "existing_verify_failed": N, "verification": "live"|"none-required"|"skipped", "research_warnings": ["<candidate name: missing topic evidence>"], "policy_warnings": ["<operator policy file that could not be used: diagnostic>"]}
 </internal>
 ```
 
-`research_warnings` is empty when no candidate lacks topic evidence. It is a run-report field, never a persisted CFP field. Surface non-empty warnings in the output; the scheduled caller consumes them as specified in its own skill.
+`research_warnings` is empty when no candidate lacks topic evidence. `policy_warnings` is empty when every operator policy file loaded. Both are run-report fields, never persisted CFP fields. Surface non-empty warnings in the output; the scheduled caller consumes them as specified in its own skill.
 
 ## Step 9 — Sort and format output
 

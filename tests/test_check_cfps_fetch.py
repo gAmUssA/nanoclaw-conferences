@@ -287,9 +287,8 @@ def test_missing_city_treated_as_virtual(check_cfps_fetch, monkeypatch, capsys):
     assert names == ["HasCity 2026"]
 
 
-def test_excluded_country_filtered(check_cfps_fetch, monkeypatch, capsys):
-    """`EXCLUDED_LOCATIONS` substring match on city — case
-    insensitive."""
+def test_no_inherited_country_exclusions(check_cfps_fetch, monkeypatch, capsys):
+    """Owner geography is applied later; public discovery has no inherited bans."""
     module, _, _ = check_cfps_fetch
     src_b = [
         _src_b_entry(
@@ -307,7 +306,7 @@ def test_excluded_country_filtered(check_cfps_fetch, monkeypatch, capsys):
 
     _, out, _ = _run(module, monkeypatch, capsys)
     names = [c["name"] for c in json.loads(out)["cfps"]]
-    assert names == ["BarcelonaConf 2026"]
+    assert names == ["LagosConf 2026", "BarcelonaConf 2026"]
 
 
 def test_travel_conflict_filtered(check_cfps_fetch, monkeypatch, capsys):
