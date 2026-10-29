@@ -109,6 +109,7 @@ def test_normalize_event_maps_nested_fields(verify_sessionize):
     assert r["conf_start"] == "2026-10-05"
     assert r["city"] == "Antwerp"
     assert r["is_online"] is False
+    assert module.normalize_event({"isUserGroup": True}, "group")["is_user_group"] is True
     assert r["cfp_url"] == "https://sessionize.com/devoxx-be-2026"
 
 

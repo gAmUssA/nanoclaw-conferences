@@ -29,15 +29,27 @@ write is left untouched.
 
 Output (stdout, JSON): {"written": N, "skipped_user_actioned": M,
 "total_records": T} — T is the record count in the file after commit.
+Optional --expected-digests FILE adds source-snapshot guards. The JSON file
+maps every working-set slug to record_digest(original_record), using None
+for an absent record. Under the same write lock, changed source records are
+skipped and reported in skipped_changed; operator actions still win. The
+legacy output shape stays unchanged when this option is absent.
+--snapshot instead reads a slug -> original record (or null for absence)
+JSON object from stdin and emits its fingerprint mapping without opening the
+state file. It is mutually exclusive with --expected-digests. Complete guarded
+writes with the owner's stamp-schema-version.py; snapshot mode has no writes.
+
 Exit 0 on success; exit 1 with a stderr diagnostic on malformed stdin,
 `_`-prefixed or non-dict payload entries, unreadable state, write
 failure, or lock failure.
 """
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -102,11 +114,28 @@ def _atomic_write_json(path, payload):
                 pass
 
 
+def record_digest(record: object) -> str:
+    """Canonical source fingerprint shared by snapshot producers and this writer."""
+    raw = json.dumps(
+        record, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Commit the Step 8 working set to cfp-state.json under the advisory lock."
     )
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE_PATH)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--expected-digests", type=Path, help="JSON source fingerprints for every proposed slug"
+    )
+    mode.add_argument(
+        "--snapshot",
+        action="store_true",
+        help="Emit source fingerprints from stdin; no state access",
+    )
     args = parser.parse_args(argv)
 
     raw = sys.stdin.read()
@@ -129,10 +158,46 @@ def main(argv=None) -> int:
                 f"user-managed config); remove it from the payload and rerun\n"
             )
             return 1
-        if not isinstance(record, dict):
+        if not isinstance(record, dict) and not (args.snapshot and record is None):
             sys.stderr.write(
                 f"commit-state: record for {slug!r} is {type(record).__name__}, "
                 f"expected an object — fix the working set and rerun\n"
+            )
+            return 1
+
+    if args.snapshot:
+        try:
+            snapshot = {slug: record_digest(record) for slug, record in working_set.items()}
+        except (ValueError, UnicodeEncodeError) as exc:
+            sys.stderr.write(
+                f"commit-state: cannot fingerprint source snapshot: {exc}; "
+                "restore finite UTF-8 records before retrying\n"
+            )
+            return 1
+        print(json.dumps(snapshot))
+        return 0
+
+    expected = None
+    if args.expected_digests is not None:
+        try:
+            expected = json.loads(args.expected_digests.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            sys.stderr.write(
+                f"commit-state: cannot read source fingerprints: {exc}; "
+                "restore the snapshot before retrying\n"
+            )
+            return 1
+        if (
+            not isinstance(expected, dict)
+            or set(expected) != set(working_set)
+            or any(
+                not isinstance(value, str) or re.fullmatch(r"[a-f0-9]{64}", value) is None
+                for value in expected.values()
+            )
+        ):
+            sys.stderr.write(
+                "commit-state: supply one valid source fingerprint per proposed slug "
+                "before retrying\n"
             )
             return 1
 
@@ -160,6 +225,7 @@ def main(argv=None) -> int:
 
             written = 0
             skipped_user_actioned = 0
+            skipped_changed: list[str] = []
             for slug, record in working_set.items():
                 on_disk = state.get(slug)
                 # Commit-time re-check against the FRESH read: the agent's
@@ -167,6 +233,18 @@ def main(argv=None) -> int:
                 if isinstance(on_disk, dict) and on_disk.get("user_actioned") is True:
                     skipped_user_actioned += 1
                     continue
+                if expected is not None:
+                    try:
+                        actual = record_digest(on_disk)
+                    except (ValueError, UnicodeEncodeError) as exc:
+                        sys.stderr.write(
+                            f"commit-state: cannot fingerprint stored source: {exc}; "
+                            "repair the state before retrying\n"
+                        )
+                        return 1
+                    if actual != expected[slug]:
+                        skipped_changed.append(slug)
+                        continue
                 state[slug] = record
                 written += 1
 
@@ -185,7 +263,7 @@ def main(argv=None) -> int:
             total = sum(
                 1 for k, v in state.items() if not k.startswith("_") and isinstance(v, dict)
             )
-            payload = {
+            payload: dict[str, int | list[str]] = {
                 "written": written,
                 "skipped_user_actioned": skipped_user_actioned,
                 "total_records": total,
@@ -193,6 +271,9 @@ def main(argv=None) -> int:
     except state_lock.LockError as exc:
         sys.stderr.write(f"commit-state: {exc}\n")
         return 1
+
+    if expected is not None:
+        payload["skipped_changed"] = skipped_changed
 
     # Print after releasing the lock — a blocked stdout consumer must not
     # extend the exclusive hold beyond the read-modify-write.

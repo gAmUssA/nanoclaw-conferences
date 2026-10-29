@@ -315,5 +315,170 @@ def test_first_run_empty_commit_feeds_stampers_and_cursor(
     assert _read(cursor_path)["last_run"] == CURSOR_NOW
 
 
+def test_guarded_commit_preserves_changes_to_the_same_slug(
+    commit_state, tmp_path, monkeypatch, capsys
+):
+    state_path = tmp_path / "cfp-state.json"
+    original = {"status": "open", "bot_notes": "unjudged"}
+    fresh = {"status": "approved", "bot_notes": "newer model judgment", "shown_in_brief": True}
+    state_path.write_text(json.dumps({"same": fresh, "other": {"status": "sent"}}))
+    expected = tmp_path / "expected.json"
+    expected.write_text(json.dumps({"same": commit_state.record_digest(original)}))
+    _stdin(monkeypatch, {"same": {"status": "dismissed", "bot_notes": "stale result"}})
+    assert commit_state.main(["--state", str(state_path), "--expected-digests", str(expected)]) == 0
+    assert _out(capsys)["skipped_changed"] == ["same"]
+    assert _read(state_path) == {"same": fresh, "other": {"status": "sent"}}
+
+
+def test_guarded_commit_writes_only_matching_records(commit_state, tmp_path, monkeypatch, capsys):
+    state_path = tmp_path / "cfp-state.json"
+    source = {"status": "open", "name": "A"}
+    state_path.write_text(
+        json.dumps({"matched": source, "owner": {"status": "sent", "user_actioned": True}})
+    )
+    expected = tmp_path / "expected.json"
+    expected.write_text(
+        json.dumps(
+            {
+                "matched": commit_state.record_digest(source),
+                "owner": commit_state.record_digest(source),
+                "new": commit_state.record_digest(None),
+            }
+        )
+    )
+    _stdin(
+        monkeypatch,
+        {
+            "matched": {"status": "dismissed"},
+            "owner": {"status": "dismissed"},
+            "new": {"status": "open"},
+        },
+    )
+    assert commit_state.main(["--state", str(state_path), "--expected-digests", str(expected)]) == 0
+    result = _out(capsys)
+    assert result == {
+        "written": 2,
+        "skipped_user_actioned": 1,
+        "total_records": 3,
+        "skipped_changed": [],
+    }
+    assert _read(state_path)["owner"] == {"status": "sent", "user_actioned": True}
+
+
+@pytest.mark.parametrize("bad", [{}, {"a": "wrong"}, {"a": "0" * 64, "extra": "1" * 64}, []])
+def test_guarded_commit_refuses_incomplete_fingerprints(
+    commit_state, tmp_path, monkeypatch, capsys, bad
+):
+    state_path = tmp_path / "cfp-state.json"
+    state_path.write_text('{"a":{"status":"open"}}')
+    before = state_path.read_bytes()
+    expected = tmp_path / "expected.json"
+    expected.write_text(json.dumps(bad))
+    _stdin(monkeypatch, {"a": {"status": "dismissed"}})
+    assert commit_state.main(["--state", str(state_path), "--expected-digests", str(expected)]) == 1
+    assert state_path.read_bytes() == before
+
+
+def test_guarded_commit_compares_after_obtaining_lock(
+    commit_state, state_lock, tmp_path, monkeypatch, capsys
+):
+    state_path = tmp_path / "cfp-state.json"
+    original = {"status": "open"}
+    changed = {"status": "approved", "bot_notes": "changed while commit waited"}
+    state_path.write_text(json.dumps({"same": original}))
+    expected = tmp_path / "expected.json"
+    expected.write_text(json.dumps({"same": commit_state.record_digest(original)}))
+    _stdin(monkeypatch, {"same": {"status": "dismissed"}})
+    outcomes = []
+    thread = threading.Thread(
+        target=lambda: outcomes.append(
+            commit_state.main(["--state", str(state_path), "--expected-digests", str(expected)])
+        )
+    )
+    with state_lock.locked(state_path):
+        thread.start()
+        state_path.write_text(json.dumps({"same": changed}))
+    thread.join(timeout=30)
+    assert not thread.is_alive()
+    assert outcomes == [0]
+    assert _out(capsys)["skipped_changed"] == ["same"]
+    assert _read(state_path)["same"] == changed
+
+
+@pytest.mark.parametrize("content", [None, "not json"])
+def test_guarded_commit_requires_a_readable_snapshot(
+    commit_state, tmp_path, monkeypatch, capsys, content
+):
+    state_path = tmp_path / "cfp-state.json"
+    original = '{"a":{"status":"open"}}'
+    state_path.write_text(original)
+    expected = tmp_path / "expected.json"
+    if content is not None:
+        expected.write_text(content)
+    _stdin(monkeypatch, {"a": {"status": "dismissed"}})
+    assert commit_state.main(["--state", str(state_path), "--expected-digests", str(expected)]) == 1
+    assert "restore the snapshot" in capsys.readouterr().err
+    assert state_path.read_text() == original
+
+
+def test_guarded_commit_refuses_nonfinite_stored_source(
+    commit_state, tmp_path, monkeypatch, capsys
+):
+    state_path = tmp_path / "cfp-state.json"
+    original = '{"a":{"status":"open","score":NaN}}'
+    state_path.write_text(original)
+    expected = tmp_path / "expected.json"
+    expected.write_text(json.dumps({"a": "0" * 64}))
+    _stdin(monkeypatch, {"a": {"status": "dismissed"}})
+    assert commit_state.main(["--state", str(state_path), "--expected-digests", str(expected)]) == 1
+    assert "repair the state" in capsys.readouterr().err
+    assert state_path.read_text() == original
+
+
+def test_snapshot_cli_canonicalizes_sources_without_opening_state(
+    commit_state, tmp_path, monkeypatch, capsys
+):
+    state_path = tmp_path / "missing-parent" / "cfp-state.json"
+    record = {"name": "Café", "status": "open"}
+    _stdin(monkeypatch, {"same": record, "new": None})
+    assert commit_state.main(["--state", str(state_path), "--snapshot"]) == 0
+    first = _out(capsys)
+    _stdin(monkeypatch, {"new": None, "same": dict(reversed(list(record.items())))})
+    assert commit_state.main(["--state", str(state_path), "--snapshot"]) == 0
+    assert _out(capsys) == first
+    assert set(first) == {"same", "new"}
+    assert all(len(value) == 64 for value in first.values())
+    assert first["same"] != first["new"]
+    assert not state_path.parent.exists()
+
+
+@pytest.mark.parametrize(
+    "payload", [{"_last_checked": {}}, {"a": []}, {"a": {"score": float("nan")}}]
+)
+def test_snapshot_refuses_unusable_sources(commit_state, tmp_path, monkeypatch, capsys, payload):
+    state_path = tmp_path / "state.json"
+    _stdin(monkeypatch, payload)
+    assert commit_state.main(["--state", str(state_path), "--snapshot"]) == 1
+    output = capsys.readouterr()
+    assert output.out == "" and output.err
+    assert not state_path.exists()
+
+
+def test_guarded_new_record_feeds_owner_schema_stamper(
+    commit_state, stamp_schema_version, tmp_path, monkeypatch, capsys
+):
+    state_path = tmp_path / "cfp-state.json"
+    expected = tmp_path / "expected.json"
+    _stdin(monkeypatch, {"new": None})
+    assert commit_state.main(["--snapshot"]) == 0
+    expected.write_text(json.dumps(_out(capsys)))
+    _stdin(monkeypatch, {"new": {"status": "open"}})
+    assert commit_state.main(["--state", str(state_path), "--expected-digests", str(expected)]) == 0
+    assert _out(capsys)["written"] == 1
+    assert stamp_schema_version.main(["--state", str(state_path)]) == 0
+    assert _out(capsys) == {"total": 1, "stamped": 1}
+    assert _read(state_path)["new"] == {"status": "open", "schema_version": 1}
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

@@ -2,6 +2,41 @@
 
 All notable changes to this plugin are documented here.
 
+## Viktor deployment — 2026-10-29
+
+- Integrate upstream 0.1.63, including Jev CFP relevance, guarded state backfills,
+  configurable geography, and the conference follow-up provider.
+- Personalize skill instructions for Viktor and remove inherited country bans.
+- Allow explicitly unconfigured Sessionize discovery to report its missing source
+  and continue with public feeds; configured API failures remain errors.
+- Disable upstream publishing and fleet dispatch from Viktor's fork.
+
+## 0.1.62 — 2026-10-26
+
+### Conference follow-up intake and private hold protocol (#93)
+
+Add grounded free-text/voice-transcript intake, complete humanized draft cards with per-person and per-card Send/Cancel/Edit choices, and the version-1 host callback authority/adapter. Deterministic card pagination preserves all draft bytes and host limits. First-contact delivery requires the genuine host-private hold consumer and dedicated gateway identity; real owner intake, taps and provider acceptance remain open. No schedule or account operation is activated.
+
+## 0.1.61 — 2026-10-23
+
+### Preserve newer CFP decisions during delayed backfills (#91)
+
+The lock-owning state committer accepts optional per-record source fingerprints and checks them after obtaining its write lock. Changed records remain untouched and are listed in `skipped_changed`; owner actions retain precedence. This lets delayed model judgments land without overwriting newer notes or decisions. Unguarded callers retain their existing contract. A read-only CLI mode produces the canonical fingerprint snapshot, and the guarded procedure runs the owner schema stamper after committing. Publishing now explicitly enables automatic changelog version stamping.
+
+## 0.1.59 — 2026-10-20
+
+### Added
+
+- Gate Tier 3 CFP relevance with Jev using the live speaker profile, existing metadata and bounded public website descriptions. Calibrated automatic routes preserve a Sonnet 5.5 fallback for uncertain cases, with no automatic Sessionize relevance default. Existing open rows are rescored while user actions, geo dismissals and Tier 1 approval remain authoritative.
+- Ship a tested calibration summarizer that joins recorded scores to the operator's labels, excludes geography and unknown labels, and reports automatic mistakes and fallback counts. The initial Jev 1.13.0 experiment's open boundary at 0.80 admitted DevFest Nantes despite a negative label; its fit overlapped positives at 0.83 initially and 0.81 with large-page descriptions. The selected conservative boundary produced three correct automatic decisions and fourteen model fallbacks on the seventeen labels. This is threshold selection on a small set, not an independent accuracy claim.
+
+## 0.1.57 — 2026-10-20
+
+### Added
+
+- check-cfps applies Baruch's travel policy to every candidate before the source tiers, the javaconferences.org auto-approve included (part of #91). `scripts/geo-gate.py` reads the operator-owned `/workspace/group/cfp-geo-policy.json` (`allowed_countries`, `aliases`, per-slug `exceptions`). It resolves a candidate's country from its `country` field, the last part of `location`, or `City (Country)` / `City, …, Country` in `city`. A recognized country outside the policy is dismissed with `bot_notes` `Auto-dismissed: Geo: <country> is outside the travel policy (cfp-geo-policy.json)`. That is the dismissal contract's prefix in front of the form of the 24 dismissals applied by hand on 2026-10-16. The travel policy is now one of the contract's substantive dismissal reasons. A geo exclusion overrides the sticky `shown_in_brief` rule in the Step 8 write, so a shown CFP outside the policy is not restored. Port isn't ready to pay for Malaysia, Turkey, the non-EU Balkans, Armenia, Georgia or Peru; the UAE is in. A value the gate cannot read as a country (a bare city, a US state code, `?`), and an online-only event, goes on to the topic tiers instead: an unresolved country never dismisses. Only names in the script's `COUNTRY_NAMES` list, the policy's allowed countries or its aliases count as countries, so `San Francisco, CA` is never read as a country called CA. The Jev topic gate for Tier 3 follows separately, once its thresholds are calibrated on descriptions. A policy file that cannot be read goes into a new run-report field, `policy_warnings`, which `nightly-cfp-sync` reports. It does not go into `research_warnings`, which the wrapper reads as missing topic evidence.
+- `rules/nanoclaw-skill-root.md` names the script root every command block in this plugin uses: `/home/node/.claude/skills/tessl__<skill>/scripts/<file>`, the only skill root an agent container mounts. `tests/test_skill_script_paths.py` checks that every such path resolves to a co-shipped script.
+
 ## 0.1.53 — 2026-09-28
 
 ### Changed

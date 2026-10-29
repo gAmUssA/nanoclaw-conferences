@@ -178,6 +178,7 @@ def normalize_event(event: dict, slug: str) -> dict:
         "country": location.get("country"),
         "timezone": timezone_.get("iana"),
         "is_online": event.get("isOnline"),
+        "is_user_group": event.get("isUserGroup"),
         "website": event.get("website"),
         "cfp_url": event.get("cfpLink") or f"https://sessionize.com/{slug}/",
         "expenses_covered": _obj(event.get("expensesCovered")),

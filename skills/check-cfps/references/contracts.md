@@ -4,7 +4,7 @@ Referenced from `check-cfps` SKILL.md. The skill's write-discipline rules and th
 
 ## Invariants (apply to every write)
 
-- **Dedup-artifact dismissals are forbidden.** Before writing `status: "dismissed"`, confirm `bot_notes` does not start with dedup-artifact phrases ("Duplicate", "duplicate entry", "already in state", "same as another source", "same source"). Dismissal requires a substantive reason: relevance, blocklist, closed CFP, or online/virtual.
+- **Dedup-artifact dismissals are forbidden.** Before writing `status: "dismissed"`, confirm `bot_notes` does not start with dedup-artifact phrases ("Duplicate", "duplicate entry", "already in state", "same as another source", "same source"). Dismissal requires a substantive reason: relevance, blocklist, closed CFP, online/virtual, or the travel policy (a Step 6 geo-gate `excluded` verdict).
 - **`user_actioned: true` entries are immutable.** Preserve the entire entry unchanged across runs. Do not infer user intent from `baruch_notes` presence.
 - **Dismissed `bot_notes` must start with `"Dismissed:"` or `"Auto-dismissed:"`** and cite substantive evidence when downgrading an existing `open`/`approved` entry.
 - **`last_verified` gates surfacing.** An `open`/`approved` entry without fresh `last_verified` (≤7 days) is suppressed from the morning brief. `updated` never substitutes for `last_verified`.

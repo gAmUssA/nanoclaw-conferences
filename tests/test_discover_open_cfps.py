@@ -194,3 +194,28 @@ def test_main_unreadable_state_exits_1(discover_open_cfps, monkeypatch, capsys):
 
     assert code == 1
     assert "cannot read" in capsys.readouterr().err
+
+
+def test_optional_missing_key_reports_unconfigured(discover_open_cfps, monkeypatch, capsys):
+    module, state_path = discover_open_cfps
+    monkeypatch.delenv("SESSIONIZE_SPEAKER_KEY", raising=False)
+    code = module.main(["--state", str(state_path), "--allow-missing-key"])
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
+    assert code == 0
+    assert result["source_status"] == "not_configured"
+    assert result["counts"] is None
+    assert result["candidates"] == []
+    assert "public feeds only" in result["warning"]
+    assert "SESSIONIZE_SPEAKER_KEY" in captured.err
+
+
+def test_optional_mode_does_not_suppress_api_failure(discover_open_cfps, monkeypatch, capsys):
+    module, state_path = discover_open_cfps
+    monkeypatch.setenv("SESSIONIZE_SPEAKER_KEY", "speaker-key")
+    _patch_fetch(monkeypatch, raise_exc=ConnectionError("offline"))
+    code = module.main(["--state", str(state_path), "--allow-missing-key"])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert not captured.out
+    assert "fetch failed" in captured.err

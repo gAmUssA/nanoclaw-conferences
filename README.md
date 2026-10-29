@@ -31,16 +31,25 @@ Load the overlay at the **main or trusted** tier — the skill reads `/workspace
 
 ## Required environment
 
-The CFP pipeline calls the Sessionize universal API deterministically from its own scripts (so the large responses never enter the agent's context — see jbaruch/nanoclaw-conferences#7/#9), which needs two host-injected keys in the container environment:
+The CFP pipeline calls the Sessionize universal API deterministically from its own scripts (so the large responses never enter the agent's context — see jbaruch/nanoclaw-conferences#7/#9), which uses two host-injected keys when Sessionize is configured:
 
 | Variable | Used by | Sent as |
 |----------|---------|---------|
 | `SESSIONIZE_SPEAKER_KEY` | `discover-open-cfps.py` (Step 2) | `X-API-KEY` header to `.../open-cfps` |
 | `SESSIONIZE_EVENT_API_KEY` | `verify-sessionize.py` (Step 5) | `X-API-KEY` header to `.../event?slug=` |
 
-`SESSIONIZE_API_BASE` optionally overrides the `https://sessionize.com/api/universal` base (tests / proxying). The plugin reads keys from the injected environment and bundles no secret of its own. Public JSON feeds supply additional candidates. Interactive checks can use web research and the host `fetch_markdown` tool.
+`SESSIONIZE_API_BASE` optionally overrides the `https://sessionize.com/api/universal` base (tests / proxying). The plugin reads keys from the injected environment and bundles no secret of its own. Viktor’s installation runs discovery with `--allow-missing-key`: an absent speaker key is explicitly reported as an unavailable source while public JSON feeds remain usable. Configured API failures still fail the run. Public JSON feeds supply additional candidates. Interactive checks can use web research and the host `fetch_markdown` tool.
 
 Scheduled syncs use the feed and Sessionize scripts throughout discovery, verification, relevance analysis, and travel checks. They do not discover web-only candidates or research missing metadata. Ambiguous Sessionize topics retain the lean-relevant policy; non-Sessionize candidates without enough topic evidence produce a notice. New uncertain candidates remain unsaved and eligible for later discovery; existing relevance decisions are preserved. Unknown exact conference dates carry a travel-check warning. State writes and the evidence-gated nightly cursor complete in the same invocation.
+
+## Viktor deployment
+
+The fork personalizes the instructions and has no inherited country blacklist.
+Geographic restrictions come only from the owner-managed policy. Jev uses the
+existing main-tier OneCLI TypeSafe grant; trusted falls back to Sonnet if denied.
+Conference follow-up sending additionally requires the newer host callback system,
+the installed admin authority, and a dedicated least-privilege gateway identity.
+Installing this plugin alone does not activate sending or scheduled tasks.
 
 ## Runtime data
 
@@ -51,16 +60,25 @@ The skill reads and writes files under the shared `/workspace/group/` mount:
 | `cfp-state.json` | read+write | this plugin (schema-versioned, owner-migrated) |
 | `cfp-suppressed-today.json` | write | this plugin |
 | `cfp-priorities.json` | read | owner-managed |
+| `cfp-geo-policy.json` | read | owner-managed |
 | `RELEVANCE-CRITERIA.md` | read | owner-managed |
 | `travel-schedule.json` | read | written by `nanoclaw-admin`'s `nightly-external-sync` (co-loaded) |
 | `user_professional.md` | read (`/workspace/trusted/`) | owner-managed |
 
 Reads of admin-owned files resolve because admin co-loads with this overlay in the same chat via the shared mount; each is optional and degrades gracefully when absent.
 
+## Rules
+
+| Rule | Description |
+|---|---|
+| [conference-followup-callbacks](rules/conference-followup-callbacks.md) | Versioned host-private follow-up holds, exact owner decisions and confirmed first-contact sends. |
+| [nanoclaw-skill-root](rules/nanoclaw-skill-root.md) | Command blocks run co-shipped scripts through NanoClaw's skill mount, `/home/node/.claude/skills/tessl__<skill>/scripts/<file>`, the only skill root an agent container has. |
+
 ## Skills
 
 | Skill | Description |
 |-------|-------------|
+| [conference-followups](skills/conference-followups/SKILL.md) | Ground free-text/voice-transcript contacts, resolve addresses, humanize drafts and present host-held Send/Cancel/Edit cards. Requires the published host consumer and dedicated gateway identity; no live acceptance or account access is implied. |
 | [check-cfps](skills/check-cfps/SKILL.md) | Finds open CFPs relevant to the user across Java/AI/developer conferences and maintains persistent CFP state (sent/dismissed/remind) in `cfp-state.json`. Use when the user asks about upcoming conferences, call for papers, speaking opportunities, CFP deadlines, or where to submit a talk proposal. |
 | [nightly-cfp-sync](skills/nightly-cfp-sync/SKILL.md) | Cadence wrapper (cron `30 6`, precheck-gated by a filesystem cadence cursor) that runs `check-cfps` on a schedule, consumes the CFP list internally, and surfaces verification failures or missing-topic-evidence notices. Emits the observable-silence cursor marker the silent-success watchdog reads. |
 
@@ -77,6 +95,7 @@ The skill bundle includes deterministic scripts the agent invokes from the SKILL
 - `scripts/backfill-name.py` — derives a fallback `name` for nameless records from the slug or `cfp_url`
 - `scripts/expire-cfps.py` — expires stale non-Sessionize `open`/`approved` entries whose deadline passed
 - `scripts/match-priorities.py` — deterministic priority-interest prefilter
+- `scripts/geo-gate.py` — Step 6 travel-policy gate over `cfp-geo-policy.json`, run before Tier 1 on every source (country resolution and verdicts in its docstring)
 - `scripts/dedup-by-url.py` — collapses entries whose `cfp_url` normalises to the same host+path, preserving the highest-priority source attribution and inheriting missing metadata from dropped copies
 - `scripts/commit-state.py` — lock-owning committer for the Step 8 working-set write (the agent never writes `cfp-state.json` directly)
 - `scripts/update-travel-warnings.py` — applies exact-date warning updates to the final working set from the agent's date-availability judgments before commit

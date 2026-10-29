@@ -466,16 +466,8 @@ def fetch_javaconferences(warnings: list) -> tuple[list, dict]:
 
 VIRTUAL_KEYWORDS = {"online", "virtual", "remote", "hybrid"}
 
-EXCLUDED_LOCATIONS = {
-    "nigeria",
-    "kenya",
-    "south africa",
-    "ghana",
-    "ethiopia",
-    "tanzania",
-    "uganda",
-    "rwanda",
-}
+# Country restrictions belong to the owner-managed geo gate, never inherited defaults.
+EXCLUDED_LOCATIONS: set[str] = set()
 
 
 def is_virtual(cfp: dict) -> bool:
