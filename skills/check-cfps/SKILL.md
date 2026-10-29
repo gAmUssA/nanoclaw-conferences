@@ -51,10 +51,10 @@ Resume is best-effort — stages are idempotent and Step 5 re-verifies the full 
 ## Step 2 — Sessionize speaker API candidates
 
 ```bash
-python3 /home/node/.claude/skills/tessl__check-cfps/scripts/discover-open-cfps.py --allow-missing-key
+python3 /home/node/.claude/skills/tessl__check-cfps/scripts/discover-open-cfps.py --allow-missing-key --source-config /workspace/group/cfp-sources.json
 ```
 
-Discovers new Sessionize open-CFP candidates deterministically (needs the host-injected `SESSIONIZE_SPEAKER_KEY`; reads `/workspace/group/cfp-state.json` to skip already-tracked slugs). Do NOT call the Sessionize API or parse its response inline — that is the script's job (jbaruch/nanoclaw-conferences#9). When `source_status` is `not_configured`, carry its warning into `policy_warnings` and show it in the final output; continue with public feeds without claiming Sessionize coverage. Otherwise parse stdout `{candidates, counts}` and carry `candidates` into the pool. Abort if the script exits non-zero (an outage must not read as "0 new CFPs"). Do not write to state here. The candidate shape and filter rules are the script's contract (`scripts/discover-open-cfps.py` docstring).
+Discovers new Sessionize open-CFP candidates deterministically (needs the host-injected `SESSIONIZE_SPEAKER_KEY`; reads `/workspace/group/cfp-state.json` to skip already-tracked slugs). Do NOT call the Sessionize API or parse its response inline — that is the script's job (jbaruch/nanoclaw-conferences#9). The owner-managed `cfp-sources.json` declares `sessionize_enabled`; keep it false until Sessionize credentials and grants are verified. A gateway placeholder alone is not evidence of configured access. When `source_status` is `not_configured`, carry its warning into `policy_warnings` and show it in the final output; continue with public feeds without claiming Sessionize coverage. Otherwise parse stdout `{candidates, counts}` and carry `candidates` into the pool. Abort if the script exits non-zero (an outage must not read as "0 new CFPs"). Do not write to state here. The candidate shape and filter rules are the script's contract (`scripts/discover-open-cfps.py` docstring).
 
 ## Step 3 — Run fetch-and-filter script
 
