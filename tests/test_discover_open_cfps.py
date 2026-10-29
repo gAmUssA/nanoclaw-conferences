@@ -219,3 +219,40 @@ def test_optional_mode_does_not_suppress_api_failure(discover_open_cfps, monkeyp
     assert code == 1
     assert not captured.out
     assert "fetch failed" in captured.err
+
+
+def test_disabled_source_ignores_gateway_placeholder(
+    discover_open_cfps, monkeypatch, capsys, tmp_path
+):
+    module, state_path = discover_open_cfps
+    monkeypatch.setenv("SESSIONIZE_SPEAKER_KEY", "onecli-managed")
+    config = tmp_path / "sources.json"
+    config.write_text(json.dumps({"sessionize_enabled": False}))
+    _patch_fetch(monkeypatch, raise_exc=AssertionError("Disabled source must not call the API"))
+    code = module.main(["--state", str(state_path), "--source-config", str(config)])
+    captured = capsys.readouterr()
+    assert code == 0
+    assert json.loads(captured.out)["source_status"] == "not_configured"
+    assert "not enabled" in captured.err
+
+
+def test_enabled_source_still_reports_api_error(discover_open_cfps, monkeypatch, capsys, tmp_path):
+    module, state_path = discover_open_cfps
+    monkeypatch.setenv("SESSIONIZE_SPEAKER_KEY", "onecli-managed")
+    config = tmp_path / "sources.json"
+    config.write_text(json.dumps({"sessionize_enabled": True}))
+    _patch_fetch(monkeypatch, raise_exc=ConnectionError("offline"))
+    code = module.main(["--state", str(state_path), "--source-config", str(config)])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "fetch failed" in captured.err
+
+
+def test_malformed_source_config_fails(discover_open_cfps, capsys, tmp_path):
+    module, state_path = discover_open_cfps
+    config = tmp_path / "sources.json"
+    config.write_text(json.dumps({"sessionize_enabled": "false"}))
+    code = module.main(["--state", str(state_path), "--source-config", str(config)])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "invalid source configuration" in captured.err

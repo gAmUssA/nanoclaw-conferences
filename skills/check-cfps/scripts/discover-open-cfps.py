@@ -31,6 +31,9 @@ Config (host-injected container env, see README): `SESSIONIZE_SPEAKER_KEY`
 and `SESSIONIZE_API_BASE` (optional override of the
 `https://sessionize.com/api/universal` base, for tests).
 
+An optional --source-config file declares sessionize_enabled as a boolean. False
+reports this source as not_configured even if a gateway placeholder is injected.
+A missing file retains normal credential handling; malformed configuration fails.
 With --allow-missing-key, absent configuration emits an explicit not_configured
 source status, null counts and a warning, then exits 0. Configured API errors
 remain failures. This mode does not claim that Sessionize returned no CFPs.
@@ -172,7 +175,35 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE_PATH)
     parser.add_argument("--allow-missing-key", action="store_true")
+    parser.add_argument("--source-config", type=Path)
     args = parser.parse_args(argv)
+
+    if args.source_config is not None and args.source_config.exists():
+        try:
+            config = json.loads(args.source_config.read_text(encoding="utf-8"))
+            if not isinstance(config, dict) or type(config.get("sessionize_enabled")) is not bool:
+                raise ValueError("sessionize_enabled must be a boolean")
+        except (OSError, UnicodeError, ValueError, RecursionError) as exc:
+            sys.stderr.write(
+                f"discover-open-cfps: invalid source configuration: {type(exc).__name__}\n"
+            )
+            return 1
+        if not config["sessionize_enabled"]:
+            warning = (
+                "Sessionize discovery is not enabled in source configuration; public feeds only."
+            )
+            sys.stderr.write(f"discover-open-cfps: {warning}\n")
+            print(
+                json.dumps(
+                    {
+                        "candidates": [],
+                        "counts": None,
+                        "source_status": "not_configured",
+                        "warning": warning,
+                    }
+                )
+            )
+            return 0
 
     api_key = os.environ.get("SESSIONIZE_SPEAKER_KEY")
     if not api_key:
