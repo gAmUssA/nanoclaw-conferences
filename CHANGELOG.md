@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.8 — 2026-11-15
+
+- chore: refresh the Tessl-generated ignore block (#116)
+
 ## 0.2.7 — 2026-11-05
 
 ### Recheck CFP relevance on Jev 1.14 (part of jbaruch/nanoclaw-admin#756)
