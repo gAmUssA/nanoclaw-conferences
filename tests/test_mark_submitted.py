@@ -77,6 +77,7 @@ class Gmail:
         mail = next(m for m in self.mails if m["id"] == path.rsplit("/", 1)[-1])
         return {
             "labelIds": mail["labels"],
+            "internalDate": mail.get("internalDate", "1793707200000"),
             "payload": {
                 "headers": [
                     {"name": "From", "value": mail["from"]},
@@ -233,6 +234,7 @@ def test_an_approved_or_auto_dismissed_cfp_flips_to_sent(owner):
     state["approved-conf"] = {
         "status": "approved",
         "user_actioned": True,
+        "updated": "2026-11-01",
         "cfp_url": "https://sessionize.com/approved-conf",
         "conf_date": "2027-04-02",
     }
@@ -271,7 +273,7 @@ def test_confirmation_preserves_newer_metadata_and_talks_under_the_lock(owner, m
             }
         )
         owner.STATE.write_text(json.dumps(state))
-        original(updates)
+        return original(updates)
 
     monkeypatch.setattr(owner, "commit", concurrent_commit)
     owner.run(Gmail([mail("k1", "devsum-2027@events.sessionize.com", "New talk")]), TODAY)
@@ -284,3 +286,72 @@ def test_confirmation_preserves_newer_metadata_and_talks_under_the_lock(owner, m
 def test_submission_transport_refuses_gmail_mutation(owner):
     with pytest.raises(ValueError, match="cannot mutate"):
         owner.gmail("POST", "/messages/a/modify", body={"removeLabelIds": ["INBOX"]})
+
+
+def test_deleted_confirmation_target_is_not_recreated(owner, monkeypatch):
+    original = owner.commit
+
+    def delete_then_commit(updates):
+        state = json.loads(owner.STATE.read_text())
+        del state["devsum-2027"]
+        owner.STATE.write_text(json.dumps(state))
+        return original(updates)
+
+    monkeypatch.setattr(owner, "commit", delete_then_commit)
+    with pytest.raises(RuntimeError, match="targets were removed"):
+        owner.run(Gmail([mail("deleted", "devsum-2027@events.sessionize.com", "Talk")]), TODAY)
+    assert "devsum-2027" not in json.loads(owner.STATE.read_text())
+
+
+def test_old_confirmation_cannot_override_later_owner_action(owner):
+    state = json.loads(owner.STATE.read_text())
+    state["devsum-2027"].update(status="dismissed", user_actioned=True, updated="2026-11-04")
+    owner.STATE.write_text(json.dumps(state))
+    result = owner.run(Gmail([mail("old", "devsum-2027@events.sessionize.com", "Talk")]), TODAY)
+    assert result["marked"] == []
+    assert saved(owner, "devsum-2027")["status"] == "dismissed"
+
+
+def test_applied_confirmation_cannot_be_replayed_after_owner_action(owner):
+    api = Gmail([mail("once", "devsum-2027@events.sessionize.com", "Talk")])
+    assert owner.run(api, TODAY)["marked"] == ["devsum-2027"]
+    state = json.loads(owner.STATE.read_text())
+    assert "once" in state["devsum-2027"]["submission_confirmations"]
+    state["devsum-2027"].update(status="remind", updated="2026-11-01")
+    owner.STATE.write_text(json.dumps(state))
+    assert owner.run(api, TODAY)["marked"] == []
+    assert saved(owner, "devsum-2027")["status"] == "remind"
+
+
+def test_sessionize_url_matches_host_and_slug_with_query(owner):
+    state = json.loads(owner.STATE.read_text())
+    state["different-key"] = state.pop("devsum-2027")
+    state["different-key"]["cfp_url"] = "https://sessionize.com/devsum-2027/?utm_source=feed"
+    owner.STATE.write_text(json.dumps(state))
+    assert owner.run(Gmail([mail("url", "devsum-2027@events.sessionize.com", "Talk")]), TODAY)[
+        "marked"
+    ] == ["different-key"]
+
+
+def test_confirmation_search_follows_all_pages(owner):
+    backing = Gmail(
+        [
+            mail("first", "devsum-2027@events.sessionize.com", "One"),
+            mail("second", "devsum-2027@events.sessionize.com", "Two"),
+        ]
+    )
+    pages = []
+
+    def api(method, path, *, params: Any = None):
+        if path == "/messages" and "events.sessionize.com" in params["q"]:
+            pages.append(params.get("pageToken"))
+            return (
+                {"messages": [{"id": "second"}]}
+                if params.get("pageToken")
+                else {"messages": [{"id": "first"}], "nextPageToken": "page2"}
+            )
+        return backing(method, path, params=params)
+
+    assert owner.run(api, TODAY)["marked"] == ["devsum-2027"]
+    assert pages == [None, "page2"]
+    assert saved(owner, "devsum-2027")["submitted_talks"] == ["One", "Two"]

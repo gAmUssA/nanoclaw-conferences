@@ -503,8 +503,20 @@ if __name__ == "__main__":
 
 def test_a_confirmed_submission_overrides_an_earlier_owner_decision(tmp_path):
     state_path = tmp_path / "cfp-state.json"
-    state_path.write_text(json.dumps({"conf": {"status": "approved", "user_actioned": True}}))
-    payload = json.dumps({"conf": {"status": "sent", "user_actioned": True}})
+    state_path.write_text(
+        json.dumps({"conf": {"status": "approved", "user_actioned": True, "updated": "2026-11-01"}})
+    )
+    payload = json.dumps(
+        {
+            "conf": {
+                "status": "sent",
+                "user_actioned": True,
+                "_submission_evidence": [
+                    {"id": "m1", "received_at": "2026-11-03T12:00:00+00:00", "talk": None}
+                ],
+            }
+        }
+    )
     script = str(Path(__file__).resolve().parents[1] / "skills/check-cfps/scripts/commit-state.py")
 
     guarded = subprocess.run(

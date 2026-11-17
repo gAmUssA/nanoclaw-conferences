@@ -53,24 +53,41 @@ def gmail(method: str, path: str, *, params: dict | None = None, body: dict | No
 def confirmations(api: Callable[..., dict]) -> list[dict]:
     found = {}
     for query in QUERIES:
-        listed = api(
-            "GET", "/messages", params={"q": f"{query} in:inbox newer_than:30d", "maxResults": 100}
-        )
-        for row in listed.get("messages", []):
-            if row["id"] in found:
-                continue
-            raw = api(
-                "GET",
-                f"/messages/{row['id']}",
-                params={"format": "metadata", "metadataHeaders": ["From", "Subject"]},
-            )
-            headers = {h["name"].lower(): h["value"] for h in raw["payload"]["headers"]}
-            found[row["id"]] = {
-                "id": row["id"],
-                "from": headers.get("from", ""),
-                "subject": headers.get("subject", ""),
-            }
+        params = {"q": f"{query} in:inbox newer_than:30d", "maxResults": 100}
+        seen_tokens = set()
+        while True:
+            listed = api("GET", "/messages", params=params)
+            for row in listed.get("messages", []):
+                if row["id"] in found:
+                    continue
+                raw = api(
+                    "GET",
+                    f"/messages/{row['id']}",
+                    params={"format": "metadata", "metadataHeaders": ["From", "Subject"]},
+                )
+                headers = {h["name"].lower(): h["value"] for h in raw["payload"]["headers"]}
+                received = datetime.fromtimestamp(int(raw["internalDate"]) / 1000, UTC)
+                found[row["id"]] = {
+                    "id": row["id"],
+                    "from": headers.get("from", ""),
+                    "subject": headers.get("subject", ""),
+                    "received_at": received.isoformat(),
+                }
+            token = listed.get("nextPageToken")
+            if not token:
+                break
+            if token in seen_tokens:
+                raise ValueError("Gmail repeated a confirmation page token")
+            seen_tokens.add(token)
+            params = {**params, "pageToken": token}
     return list(found.values())
+
+
+def _sessionize_slug(url: str) -> str | None:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.hostname not in {"sessionize.com", "www.sessionize.com"}:
+        return None
+    return parsed.path.strip("/").split("/")[0].lower()
 
 
 def _unique(
@@ -94,7 +111,7 @@ def resolve(mail: dict, records: dict) -> tuple[str | None, str | None, dict | N
         known = _unique(
             records,
             lambda key, record: (
-                key == slug or str(record.get("cfp_url") or "").rstrip("/").endswith(f"/{slug}")
+                key == slug or _sessionize_slug(str(record.get("cfp_url") or "")) == slug
             ),
         )
         return known, subject, None
@@ -140,11 +157,19 @@ def plan(mails: list[dict], records: dict, today: str) -> tuple[dict, list[dict]
             "user_actioned": True,
             "updated": today,
             "submitted_talks": sorted(talks),
+            "_submission_evidence": [
+                *record.get("_submission_evidence", []),
+                {
+                    "id": mail["id"],
+                    "received_at": mail["received_at"],
+                    "talk": title,
+                },
+            ],
         }
     return updates, archive, sorted(set(unmatched))
 
 
-def commit(updates: dict) -> None:
+def commit(updates: dict) -> list[str]:
     script = INSTALLED_COMMIT if INSTALLED_COMMIT.exists() else SOURCE_COMMIT
     done = subprocess.run(
         [sys.executable, str(script), "--state", str(STATE), "--submission-confirmed"],
@@ -155,6 +180,7 @@ def commit(updates: dict) -> None:
     )
     if done.returncode != 0:
         raise RuntimeError(f"commit-state failed: {done.stderr.strip()}")
+    return json.loads(done.stdout)["written_slugs"]
 
 
 def run(api: Callable[..., dict] = gmail, today: str | None = None) -> dict:
@@ -165,9 +191,8 @@ def run(api: Callable[..., dict] = gmail, today: str | None = None) -> dict:
         if not slug.startswith("_") and isinstance(record, dict)
     }
     updates, _matched, unmatched = plan(confirmations(api), records, day)
-    if updates:
-        commit(updates)
-    return {"marked": sorted(updates), "archived": 0, "unmatched": unmatched}
+    marked = commit(updates) if updates else []
+    return {"marked": sorted(marked), "archived": 0, "unmatched": unmatched}
 
 
 def main() -> int:
