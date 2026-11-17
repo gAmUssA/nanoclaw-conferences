@@ -34,6 +34,8 @@ maps every working-set slug to record_digest(original_record), using None
 for an absent record. Under the same write lock, changed source records are
 skipped and reported in skipped_changed; operator actions still win. The
 legacy output shape stays unchanged when this option is absent.
+--submission-confirmed lets a confirmation mail overwrite an operator decision:
+the mail proves the submission happened after that decision.
 --snapshot instead reads a slug -> original record (or null for absence)
 JSON object from stdin and emits its fingerprint mapping without opening the
 state file. It is mutually exclusive with --expected-digests. Complete guarded
@@ -127,6 +129,11 @@ def main(argv=None) -> int:
         description="Commit the Step 8 working set to cfp-state.json under the advisory lock."
     )
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE_PATH)
+    parser.add_argument(
+        "--submission-confirmed",
+        action="store_true",
+        help="A confirmation mail proves the submission, so it outranks an earlier decision",
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--expected-digests", type=Path, help="JSON source fingerprints for every proposed slug"
@@ -158,6 +165,7 @@ def main(argv=None) -> int:
                 f"user-managed config); remove it from the payload and rerun\n"
             )
             return 1
+
         if not isinstance(record, dict) and not (args.snapshot and record is None):
             sys.stderr.write(
                 f"commit-state: record for {slug!r} is {type(record).__name__}, "
@@ -230,7 +238,11 @@ def main(argv=None) -> int:
                 on_disk = state.get(slug)
                 # Commit-time re-check against the FRESH read: the agent's
                 # copy may predate a user action taken mid-run.
-                if isinstance(on_disk, dict) and on_disk.get("user_actioned") is True:
+                if (
+                    isinstance(on_disk, dict)
+                    and on_disk.get("user_actioned") is True
+                    and not args.submission_confirmed
+                ):
                     skipped_user_actioned += 1
                     continue
                 if expected is not None:

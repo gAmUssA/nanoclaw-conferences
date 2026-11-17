@@ -58,6 +58,10 @@ Every CFP record carries its own `schema_version` (currently `1`, introduced wit
 - **Other readers** (`dedup-by-url.py`, `system-audit.py`): operate on version-independent structural fields (`cfp_url`/slug dedup, script inventory), not the `matched_interests` shape, so this version does not gate them.
 - **Migration window:** a pre-#308 file has no `schema_version` on any record; until `check-cfps` next runs (nightly housekeeping or a manual invocation) the reader surfaces no CFPs. `check-cfps`'s deterministic stamper brings every record to `1` on its next run, after which the reader resumes. No data rewrite beyond the stamp is needed — absent `matched_interests` on a version-1 record is already the pinned default.
 
+## Submitted CFPs
+
+`nightly-cfp-sync/scripts/mark-submitted.py` turns confirmation mail into `status: sent`, `user_actioned: true` and `submitted_talks`, a list of talk titles, through `commit-state.py`. To answer "what did we submit for these dates?", read the `sent` records and their `conf_date`. The mail is the proof: a submission with no confirmation mail is marked by hand as above.
+
 ## Freshness heartbeat — `_last_checked`
 
 Top-level `_`-prefixed config field (not a CFP record). The UTC ISO-8601 instant the check-cfps pipeline last ran to completion, **independent of whether any record changed** — a run that re-verified everything and changed nothing still advances it. It answers "did the pipeline run?", which per-record `updated`/`last_verified` cannot: those stay put when nothing changed, so a healthy idle pipeline looks identical to a dead one if you read them alone.
