@@ -79,6 +79,11 @@ def stored(directory: Path) -> dict | None:
         return None
     if (
         isinstance(data, dict)
+        and (
+            "schema_version" not in data
+            or type(data["schema_version"]) is int
+            and data["schema_version"] == 2
+        )
         and isinstance(data.get("run_date"), str)
         and isinstance(data.get("completed"), list)
         and all(isinstance(s, str) and STAGE_RE.match(s) for s in data["completed"])

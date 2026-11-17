@@ -257,6 +257,19 @@ def main(argv=None) -> int:
                     if actual != expected[slug]:
                         skipped_changed.append(slug)
                         continue
+                if args.submission_confirmed and isinstance(on_disk, dict):
+                    record = {
+                        **on_disk,
+                        "status": "sent",
+                        "user_actioned": True,
+                        "updated": max(
+                            str(on_disk.get("updated") or ""), str(record.get("updated") or "")
+                        ),
+                        "submitted_talks": sorted(
+                            set(on_disk.get("submitted_talks", []))
+                            | set(record.get("submitted_talks", []))
+                        ),
+                    }
                 state[slug] = record
                 written += 1
 

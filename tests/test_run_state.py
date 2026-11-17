@@ -432,3 +432,15 @@ def test_a_save_after_midnight_keeps_the_run_it_belongs_to(run_state, monkeypatc
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+@pytest.mark.parametrize("version,expected", [(1, False), (2, True), (99, False), (True, False)])
+def test_resume_requires_compatible_stage_schema(run_state, version, expected):
+    module, directory = run_state
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "manifest.json").write_text(
+        json.dumps({"run_date": module.today(), "completed": ["fetch"], "schema_version": version})
+    )
+    result = module.begin(directory)
+    assert result["resume"] is expected
+    assert result["completed"] == (["fetch"] if expected else [])

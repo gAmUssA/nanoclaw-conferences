@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-"""Mark CFPs from submission confirmation mail: status sent, mail archived.
+"""Mark unambiguous, dated CFP records from submission confirmation mail.
 
-Reads confirmations from the last 30 days that are still in the inbox, through
-the OneCLI gateway, which holds the Google credential. A matched CFP gets
-`status: sent`, `user_actioned: true` and its talk titles through check-cfps'
-commit-state.py; a CFP already sent gains any new talk title. Then the mail leaves
-the inbox, so no confirmation is read twice. Mail with no matching CFP stays in the
-inbox and is reported. An Oxford Abstracts confirmation counts only when its
-subject names OCX.
+Read inbox confirmations through OneCLI and merge submission fields under the
+tracker lock. Gmail access is read-only: confirmations remain in the inbox.
+Unknown, undated or ambiguous editions stay unmatched for discovery or owner
+review; never invent a conference date or choose the newest edition.
 
-No arguments. Exit 0 prints {"marked": [slugs], "archived": N, "unmatched": [senders]}.
-Exit 1: Gmail or state failure, with the cause on stderr; nothing further runs.
+No arguments. Exit 0 prints {"marked": [slugs], "archived": 0, "unmatched": [senders]}.
+Exit 1 reports Gmail or state failures on stderr.
 """
 
 from __future__ import annotations
@@ -40,6 +37,8 @@ RECEIVED_PREFIX = "your session proposal has been received:"
 
 
 def gmail(method: str, path: str, *, params: dict | None = None, body: dict | None = None) -> dict:
+    if method != "GET" or body is not None:
+        raise ValueError("Submission confirmation reads cannot mutate Gmail")
     query = f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""
     request = urllib.request.Request(
         f"{GMAIL}{path}{query}",
@@ -74,18 +73,16 @@ def confirmations(api: Callable[..., dict]) -> list[dict]:
     return list(found.values())
 
 
-def _latest(records: dict, matches: Callable[[str, dict], bool]) -> str | None:
-    hits = [slug for slug, record in records.items() if matches(slug, record)]
-    return max(hits, key=lambda slug: str(records[slug].get("conf_date") or ""), default=None)
-
-
-def _new_sessionize_record(slug: str) -> dict:
-    return {
-        "name": slug.replace("-", " ").title(),
-        "slug": slug,
-        "cfp_url": f"https://sessionize.com/{slug}",
-        "source": "submission-mail",
-    }
+def _unique(
+    records: dict, matches: Callable[[str, dict], bool], year: str | None = None
+) -> str | None:
+    hits = [
+        slug
+        for slug, record in records.items()
+        if matches(slug, record)
+        and (year is None or str(record.get("conf_date") or "").startswith(year + "-"))
+    ]
+    return hits[0] if len(hits) == 1 else None
 
 
 def resolve(mail: dict, records: dict) -> tuple[str | None, str | None, dict | None]:
@@ -94,36 +91,40 @@ def resolve(mail: dict, records: dict) -> tuple[str | None, str | None, dict | N
     sessionize = SESSIONIZE.search(sender)
     if sessionize:
         slug = sessionize.group(1).lower()
-        known = _latest(
+        known = _unique(
             records,
             lambda key, record: (
                 key == slug or str(record.get("cfp_url") or "").rstrip("/").endswith(f"/{slug}")
             ),
         )
-        return known or slug, subject, None if known else _new_sessionize_record(slug)
+        return known, subject, None
     if "socallinuxexpo.org" in sender:
         title = subject[len(RECEIVED_PREFIX) :].strip() if ":" in subject else None
-        known = _latest(
+        known = _unique(
             records, lambda _, record: "socallinuxexpo.org" in str(record.get("cfp_url") or "")
         )
         return known, title, None
     if "oxfordabstracts.com" in sender and "ocx" in subject.lower():
-        known = _latest(
+        edition = re.search(r"\bocx[ -]?(?:20)?([0-9]{2})\b", subject, re.IGNORECASE)
+        known = _unique(
             records,
             lambda key, record: "ocx" in key.lower() or "ocx" in str(record.get("name")).lower(),
+            "20" + edition.group(1) if edition else None,
         )
         return known, None, None
     return None, None, None
 
 
 def plan(mails: list[dict], records: dict, today: str) -> tuple[dict, list[dict], list[str]]:
-    """The tracker updates, the mail to archive and the senders nothing matched."""
+    """Tracker updates, matched mail and senders needing owner review."""
     updates: dict = {}
     archive: list[dict] = []
     unmatched: list[str] = []
     for mail in mails:
         slug, title, created = resolve(mail, records)
-        if slug is None:
+        if slug is None or (
+            not records[slug].get("conf_date") and records[slug].get("status") != "sent"
+        ):
             unmatched.append(mail["from"])
             continue
         archive.append(mail)
@@ -163,12 +164,10 @@ def run(api: Callable[..., dict] = gmail, today: str | None = None) -> dict:
         for slug, record in json.loads(STATE.read_text()).items()
         if not slug.startswith("_") and isinstance(record, dict)
     }
-    updates, archive, unmatched = plan(confirmations(api), records, day)
+    updates, _matched, unmatched = plan(confirmations(api), records, day)
     if updates:
         commit(updates)
-    for mail in archive:
-        api("POST", f"/messages/{mail['id']}/modify", body={"removeLabelIds": ["INBOX"]})
-    return {"marked": sorted(updates), "archived": len(archive), "unmatched": unmatched}
+    return {"marked": sorted(updates), "archived": 0, "unmatched": unmatched}
 
 
 def main() -> int:

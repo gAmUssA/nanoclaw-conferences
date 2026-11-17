@@ -94,7 +94,7 @@ def saved(owner, slug):
     return json.loads(owner.STATE.read_text())[slug]
 
 
-def test_sessionize_confirmations_mark_the_event_with_every_talk_and_archive(owner):
+def test_sessionize_confirmations_mark_the_event_without_mutating_mail(owner):
     api = Gmail(
         [
             mail("a1", "devsum-2027@events.sessionize.com", "Like It or Not, You're the CTO Now"),
@@ -104,7 +104,7 @@ def test_sessionize_confirmations_mark_the_event_with_every_talk_and_archive(own
         ]
     )
     result = owner.run(api, TODAY)
-    assert result == {"marked": ["devsum-2027"], "archived": 2, "unmatched": []}
+    assert result == {"marked": ["devsum-2027"], "archived": 0, "unmatched": []}
     record = saved(owner, "devsum-2027")
     assert record["status"] == "sent" and record["user_actioned"] is True
     assert record["updated"] == TODAY and record["conf_date"] == "2027-05-20"
@@ -112,31 +112,21 @@ def test_sessionize_confirmations_mark_the_event_with_every_talk_and_archive(own
         "Like It or Not, You're the CTO Now",
         "The Agent That Didn't Know Who to Ask",
     ]
-    assert sorted(api.archived) == ["a1", "a2"]
+    assert api.archived == []
 
 
-def test_an_event_missing_from_the_tracker_is_added_as_sent(owner):
-    api = Gmail([mail("b1", "new-conf-2027@events.sessionize.com", "A Talk")])
-    assert owner.run(api, TODAY)["marked"] == ["new-conf-2027"]
-    record = saved(owner, "new-conf-2027")
-    assert record["cfp_url"] == "https://sessionize.com/new-conf-2027"
-    assert record["status"] == "sent" and record["name"] == "New Conf 2027"
+def test_unknown_event_is_held_until_discovery_supplies_its_date(owner):
+    sender = "new-conf-2027@events.sessionize.com"
+    api = Gmail([mail("b1", sender, "A Talk")])
+    assert owner.run(api, TODAY) == {"marked": [], "archived": 0, "unmatched": [sender]}
+    assert "new-conf-2027" not in json.loads(owner.STATE.read_text())
 
 
-def test_scale_marks_the_newest_edition_and_takes_the_title_after_the_colon(owner):
-    api = Gmail(
-        [
-            mail(
-                "c1",
-                "info@socallinuxexpo.org",
-                "Your session proposal has been received: The Case of the Missing Bottleneck",
-            )
-        ]
-    )
-    assert owner.run(api, TODAY)["marked"] == ["southern-california-linux-expo-scale-24x-2027"]
-    record = saved(owner, "southern-california-linux-expo-scale-24x-2027")
-    assert record["submitted_talks"] == ["The Case of the Missing Bottleneck"]
-    assert saved(owner, "scale-23x")["status"] == "expired"
+def test_scale_without_occurrence_evidence_does_not_choose_the_newest_edition(owner):
+    sender = "info@socallinuxexpo.org"
+    api = Gmail([mail("c1", sender, "Your session proposal has been received: A Talk")])
+    assert owner.run(api, TODAY) == {"marked": [], "archived": 0, "unmatched": [sender]}
+    assert saved(owner, "southern-california-linux-expo-scale-24x-2027")["status"] == "open"
 
 
 def test_oxford_abstracts_matches_by_conference_name(owner):
@@ -158,17 +148,17 @@ def test_a_sent_event_gains_a_later_talk_title(owner):
     state["already"]["submitted_talks"] = ["Talk A"]
     owner.STATE.write_text(json.dumps(state))
     api = Gmail([mail("e1", "already@events.sessionize.com", "Talk B")])
-    assert owner.run(api, TODAY) == {"marked": ["already"], "archived": 1, "unmatched": []}
+    assert owner.run(api, TODAY) == {"marked": ["already"], "archived": 0, "unmatched": []}
     assert saved(owner, "already")["submitted_talks"] == ["Talk A", "Talk B"]
 
 
-def test_a_sent_event_with_that_title_is_not_rewritten_but_its_mail_leaves_the_inbox(owner):
+def test_a_sent_event_with_that_title_is_not_rewritten_or_archived(owner):
     state = json.loads(owner.STATE.read_text())
     state["already"]["submitted_talks"] = ["Talk A"]
     owner.STATE.write_text(json.dumps(state))
     before = saved(owner, "already")
     api = Gmail([mail("e1", "already@events.sessionize.com", "Talk A")])
-    assert owner.run(api, TODAY) == {"marked": [], "archived": 1, "unmatched": []}
+    assert owner.run(api, TODAY) == {"marked": [], "archived": 0, "unmatched": []}
     assert saved(owner, "already") == before
 
 
@@ -237,12 +227,14 @@ def test_an_approved_or_auto_dismissed_cfp_flips_to_sent(owner):
     state["devopsdays-zurich-2027"] = {
         "status": "dismissed",
         "cfp_url": "https://sessionize.com/devopsdays-zurich-2027",
+        "conf_date": "2027-04-01",
         "bot_notes": "Auto-dismissed: blocked prefix 'devopsdays'",
     }
     state["approved-conf"] = {
         "status": "approved",
         "user_actioned": True,
         "cfp_url": "https://sessionize.com/approved-conf",
+        "conf_date": "2027-04-02",
     }
     owner.STATE.write_text(json.dumps(state))
     api = Gmail(
@@ -254,3 +246,41 @@ def test_an_approved_or_auto_dismissed_cfp_flips_to_sent(owner):
     assert owner.run(api, TODAY)["marked"] == ["approved-conf", "devopsdays-zurich-2027"]
     assert saved(owner, "devopsdays-zurich-2027")["status"] == "sent"
     assert saved(owner, "approved-conf")["status"] == "sent"
+
+
+def test_ocx_confirmation_names_the_edition_even_when_a_newer_one_exists(owner):
+    state = json.loads(owner.STATE.read_text())
+    state["ocx-2028"] = {"name": "OCX 2028", "status": "open", "conf_date": "2028-04-14"}
+    owner.STATE.write_text(json.dumps(state))
+    api = Gmail([mail("j1", "no-reply@oxfordabstracts.com", "OCX27 - Thank you")])
+    assert owner.run(api, TODAY)["marked"] == ["ocx-2027"]
+    assert saved(owner, "ocx-2028")["status"] == "open"
+    assert api.archived == []
+
+
+def test_confirmation_preserves_newer_metadata_and_talks_under_the_lock(owner, monkeypatch):
+    original = owner.commit
+
+    def concurrent_commit(updates):
+        state = json.loads(owner.STATE.read_text())
+        state["devsum-2027"].update(
+            {
+                "owner_notes": "Keep this",
+                "name": "Corrected name",
+                "submitted_talks": ["Concurrent talk"],
+            }
+        )
+        owner.STATE.write_text(json.dumps(state))
+        original(updates)
+
+    monkeypatch.setattr(owner, "commit", concurrent_commit)
+    owner.run(Gmail([mail("k1", "devsum-2027@events.sessionize.com", "New talk")]), TODAY)
+    record = saved(owner, "devsum-2027")
+    assert record["owner_notes"] == "Keep this"
+    assert record["name"] == "Corrected name"
+    assert record["submitted_talks"] == ["Concurrent talk", "New talk"]
+
+
+def test_submission_transport_refuses_gmail_mutation(owner):
+    with pytest.raises(ValueError, match="cannot mutate"):
+        owner.gmail("POST", "/messages/a/modify", body={"removeLabelIds": ["INBOX"]})

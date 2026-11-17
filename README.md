@@ -79,7 +79,7 @@ Reads of admin-owned files resolve because admin co-loads with this overlay in t
 
 | Skill | Description |
 |-------|-------------|
-| [conference-followups](skills/conference-followups/SKILL.md) | From Baruch's list of people met at a conference, find real addresses, draft one email each in his voice and post each as a one-tap «Отправить» card; calendar holds only for agreed meetings. |
+| [conference-followups](skills/conference-followups/SKILL.md) | From Viktor's list of people met at a conference, find real addresses, draft one email each in his voice and post each as a one-tap «Отправить» card; calendar holds only for agreed meetings. |
 | [check-cfps](skills/check-cfps/SKILL.md) | Finds open CFPs relevant to the user across Java/AI/developer conferences and maintains persistent CFP state (sent/dismissed/remind) in `cfp-state.json`. Use when the user asks about upcoming conferences, call for papers, speaking opportunities, CFP deadlines, or where to submit a talk proposal. |
 | [nightly-cfp-sync](skills/nightly-cfp-sync/SKILL.md) | Cadence wrapper (cron `30 6`, precheck-gated by a filesystem cadence cursor) that runs `check-cfps` on a schedule, consumes the CFP list internally, and surfaces verification failures or missing-topic-evidence notices. Emits the observable-silence cursor marker the silent-success watchdog reads. |
 

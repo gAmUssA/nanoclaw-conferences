@@ -38,7 +38,7 @@ cfp-run/
 | `run_date` | string | yes | UTC date (`YYYY-MM-DD`) the run began. `begin` resumes only when this equals today. |
 | `completed` | string[] | yes | Stage names saved so far, in completion order, deduped. |
 
-The store lives for one UTC day and is scratch: a manifest that is missing, from another day, unreadable or carrying an invalid stage name is not resumed, and `begin` starts fresh. A fresh run is always safe, so the store carries no schema version and never migrates; an older manifest's extra `schema_version` field is ignored.
+The store lives for one UTC day and is scratch: a manifest that is missing, from another day, unreadable or carrying an invalid stage name is not resumed, and `begin` starts fresh. A fresh run is always safe, so the store carries no schema version and never migrates; only versionless and schema-2 manifests are compatible. Schema-1 or unknown versions start fresh because their stage payloads are incompatible.
 
 ## Stages
 

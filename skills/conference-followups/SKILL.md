@@ -1,7 +1,7 @@
 ---
 name: conference-followups
 description: >
-  Follow up with people Baruch met at a conference: from his list of names and
+  Follow up with people Viktor met at a conference: from his list of names and
   conversation notes (text or voice), find each person's real address, draft one
   short email each in his voice, and post each as a one-tap «Отправить» card;
   offer a calendar hold only where a meeting was actually agreed. Use for
@@ -10,11 +10,11 @@ description: >
 
 # Conference Follow-ups
 
-Process steps in order. Do not skip ahead. Main only. Nothing is sent without Baruch's tap.
+Process steps in order. Do not skip ahead. Main only. Nothing is sent without Viktor's tap.
 
 ## Step 1 — Ground the list
 
-From Baruch's message or voice transcript, take the conference (name and the date it started) and each person with what they talked about. Use only what he said: no invented people, addresses, promises or meetings. If the conference, its date or a person is unclear, ask him one question and finish here. Otherwise proceed immediately to Step 2.
+From Viktor's message or voice transcript, take the conference (name and the date it started) and each person with what they talked about. Use only what he said: no invented people, addresses, promises or meetings. If the conference, its date or a person is unclear, ask him one question and finish here. Otherwise proceed immediately to Step 2.
 
 ## Step 2 — Find each address
 
@@ -27,7 +27,7 @@ People without an address stay unsent; list them at the end. With nobody left to
 
 ## Step 3 — Draft and post one card per person
 
-Draft one short plain-text email per person: the conference, what you talked about, and the follow-up they agreed to, nothing more. Run it through `Skill(skill: "tessl__blog-writer")` to make it sound like Baruch, keeping its language and facts.
+Draft one short plain-text email per person: the conference, what you talked about, and the follow-up they agreed to, nothing more. Run it through `Skill(skill: "tessl__blog-writer")` to make it sound like Viktor, keeping its language and facts.
 
 Post each with `mcp__nanoclaw__send_message`. The text is exactly the host's template, with one button:
 
@@ -44,4 +44,4 @@ The host refuses a card whose text differs from the payload, more than one recip
 
 ## Step 4 — Offer calendar holds
 
-Only for a meeting the list actually agreed, with a known time and duration: ask Baruch with one `owner.answer.v1` card whether to hold it («Поставить» / «Не надо»). On «Поставить», read `skills/heartbeat/references/google-main-writes.md` from the admin plugin at `/home/node/.claude/skills/tessl__heartbeat/references/google-main-writes.md` and follow its `## Requested calendar event`. No agreed meeting, no hold. Finish here.
+Only for a meeting the list actually agreed, with a known time and duration: ask Viktor with one `owner.answer.v1` card whether to hold it («Поставить» / «Не надо»). On «Поставить», read `skills/heartbeat/references/google-main-writes.md` from the admin plugin at `/home/node/.claude/skills/tessl__heartbeat/references/google-main-writes.md` and follow its `## Requested calendar event`. No agreed meeting, no hold. Finish here.

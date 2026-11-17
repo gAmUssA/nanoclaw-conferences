@@ -34,7 +34,7 @@ Then mark what the owner already submitted, so the brief stops listing it:
 python3 /home/node/.claude/skills/tessl__nightly-cfp-sync/scripts/mark-submitted.py
 ```
 
-The script's docstring owns its output. On a nonzero exit or a nonempty `unmatched`, send one short notice with the stderr or the senders, then continue.
+The script's docstring owns its output. It leaves Gmail unchanged; unknown, undated or ambiguous editions require discovery or owner review. On a nonzero exit or a nonempty `unmatched`, send one short notice with the stderr or the senders, then continue.
 
 `Skill(skill: "tessl__check-cfps", args: "scheduled")` — refresh open CFP data, apply Sessionize verification, update `cfp-state.json` using the inner skill's scheduled mode.
 
