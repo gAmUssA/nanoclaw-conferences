@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.9 — 2026-11-17
+
+- chore(deps): bump ruff from 0.17.3 to 0.17.4 (#115)
+
 ## 0.2.8 — 2026-11-15
 
 - chore: refresh the Tessl-generated ignore block (#116)
