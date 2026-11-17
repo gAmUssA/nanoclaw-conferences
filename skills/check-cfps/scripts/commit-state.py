@@ -34,6 +34,9 @@ maps every working-set slug to record_digest(original_record), using None
 for an absent record. Under the same write lock, changed source records are
 skipped and reported in skipped_changed; operator actions still win. The
 legacy output shape stays unchanged when this option is absent.
+--submission-confirmed requires durable mail identity and receipt time. Only
+unapplied evidence newer than an owner decision can change that decision;
+missing targets fail without writing. Existing metadata is merged under the lock.
 --snapshot instead reads a slug -> original record (or null for absence)
 JSON object from stdin and emits its fingerprint mapping without opening the
 state file. It is mutually exclusive with --expected-digests. Complete guarded
@@ -52,6 +55,7 @@ import os
 import re
 import sys
 import tempfile
+from datetime import UTC, datetime, time
 from pathlib import Path
 
 
@@ -127,6 +131,11 @@ def main(argv=None) -> int:
         description="Commit the Step 8 working set to cfp-state.json under the advisory lock."
     )
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE_PATH)
+    parser.add_argument(
+        "--submission-confirmed",
+        action="store_true",
+        help="A confirmation mail proves the submission, so it outranks an earlier decision",
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--expected-digests", type=Path, help="JSON source fingerprints for every proposed slug"
@@ -158,6 +167,7 @@ def main(argv=None) -> int:
                 f"user-managed config); remove it from the payload and rerun\n"
             )
             return 1
+
         if not isinstance(record, dict) and not (args.snapshot and record is None):
             sys.stderr.write(
                 f"commit-state: record for {slug!r} is {type(record).__name__}, "
@@ -223,6 +233,14 @@ def main(argv=None) -> int:
                 )
                 return 1
 
+            if args.submission_confirmed:
+                missing = [slug for slug in working_set if not isinstance(state.get(slug), dict)]
+                if missing:
+                    sys.stderr.write(
+                        "commit-state: submission targets were removed; refresh state\n"
+                    )
+                    return 1
+            written_slugs = []
             written = 0
             skipped_user_actioned = 0
             skipped_changed: list[str] = []
@@ -230,7 +248,11 @@ def main(argv=None) -> int:
                 on_disk = state.get(slug)
                 # Commit-time re-check against the FRESH read: the agent's
                 # copy may predate a user action taken mid-run.
-                if isinstance(on_disk, dict) and on_disk.get("user_actioned") is True:
+                if (
+                    isinstance(on_disk, dict)
+                    and on_disk.get("user_actioned") is True
+                    and not args.submission_confirmed
+                ):
                     skipped_user_actioned += 1
                     continue
                 if expected is not None:
@@ -245,8 +267,50 @@ def main(argv=None) -> int:
                     if actual != expected[slug]:
                         skipped_changed.append(slug)
                         continue
+                if args.submission_confirmed:
+                    assert isinstance(on_disk, dict)
+                    applied = dict(on_disk.get("submission_confirmations", {}))
+                    eligible = []
+                    for evidence in record.get("_submission_evidence", []):
+                        identifier = evidence["id"]
+                        received = datetime.fromisoformat(evidence["received_at"])
+                        if received.tzinfo is None:
+                            raise ValueError("confirmation receipt time needs a timezone")
+                        if identifier in applied:
+                            continue
+                        if on_disk.get("user_actioned") and on_disk.get("status") != "sent":
+                            action = on_disk.get("updated")
+                            if not action:
+                                continue
+                            action_time = datetime.fromisoformat(action)
+                            if len(action) == 10:
+                                action_time = datetime.combine(action_time.date(), time.max, UTC)
+                            elif action_time.tzinfo is None:
+                                action_time = action_time.replace(tzinfo=UTC)
+                            if received <= action_time:
+                                continue
+                        eligible.append(evidence)
+                    if not eligible:
+                        skipped_user_actioned += 1
+                        continue
+                    for evidence in eligible:
+                        applied[evidence["id"]] = evidence["received_at"]
+                    record = {
+                        **on_disk,
+                        "status": "sent",
+                        "user_actioned": True,
+                        "updated": max(
+                            str(on_disk.get("updated") or ""), str(record.get("updated") or "")
+                        ),
+                        "submitted_talks": sorted(
+                            set(on_disk.get("submitted_talks", []))
+                            | {e["talk"] for e in eligible if e.get("talk")}
+                        ),
+                        "submission_confirmations": applied,
+                    }
                 state[slug] = record
                 written += 1
+                written_slugs.append(slug)
 
             # `state_absent` carries the first-run case through an empty
             # working set: the file has to exist for the stampers that
@@ -272,6 +336,8 @@ def main(argv=None) -> int:
         sys.stderr.write(f"commit-state: {exc}\n")
         return 1
 
+    if args.submission_confirmed:
+        payload["written_slugs"] = written_slugs
     if expected is not None:
         payload["skipped_changed"] = skipped_changed
 

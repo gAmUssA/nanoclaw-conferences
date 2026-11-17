@@ -1,7 +1,50 @@
 # Changelog
 
+## 0.2.9 — 2026-11-17
+
+- chore(deps): bump ruff from 0.17.3 to 0.17.4 (#115)
+
+## 0.2.8 — 2026-11-15
+
+- chore: refresh the Tessl-generated ignore block (#116)
+
+## 0.2.7 — 2026-11-05
+
+### Recheck CFP relevance on Jev 1.14 (part of jbaruch/nanoclaw-admin#756)
+
+Move the CFP relevance pin to `jev-1.14.0`. A matched replay of the existing 17 operator-labelled cases preserved all routes: three correct automatic decisions and fourteen reasoning fallbacks on both models. Keep the probability bands unchanged; retain the small-cohort limitation in the calibration reference.
+
+## 0.2.3 — 2026-11-03
+
+### Conference follow-ups send through one-tap cards (jbaruch/nanoclaw#1253)
+
+Follow-ups were held by a host-private `conference.followup.v1` callback with its own ledger, store, contact log and recovery tools; it never sent a mail. Each follow-up is now a `gmail.send.v1` card «✉️ Письмо для …» that the host sends on Baruch's tap (jbaruch/nanoclaw#1263, #1275). Deleted: the intake validator, the card builder, the callback wrapper, both references and `rules/conference-followup-callbacks.md`.
+
+## 0.2.2 — 2026-11-03
+
+### Simplify the check-cfps run-state store (jbaruch/nanoclaw#1256)
+
+`run-state.py` keeps the same five commands and outputs: a same-day continuation still resumes from its saved stages (#4). The schema-2 manifest version, its v1 upgrade path and the reserved-name repair are gone. A store that lives for one UTC day and is always safe to rebuild starts fresh on anything it can't use. An existing manifest still resumes, because its old `schema_version` field is ignored.
+
+## 0.2.1 — 2026-11-03
+
+### Replace the submissions ledger with a nightly script (#105)
+
+The `cfp-submissions` ledger (about 8,600 lines) never ran: its state file doesn't exist. Its job is now `nightly-cfp-sync/scripts/mark-submitted.py`, about 180 lines. Confirmation mail from Sessionize, SCaLE and Oxford Abstracts marks the CFP `sent` with its talk titles and archives the mail, and the brief stops listing it. This runs on the existing nightly job, with no separate switch to turn on.
+
+## 0.2.0 — 2026-11-01
+
+### Track evidenced conference submissions (#101)
+
+Add one private per-event/talk ledger with normalized/manual evidence, explicit owner bindings, unknown/conflicting-field retention and inclusive date-overlap queries. Reconcile exact existing CFPs to canonical `sent` through their existing expected-digest owner, preserving user actions, concurrent changes and all heartbeat/cadence state. Add bounded adapters for observed Sessionize My Events and maintained Gmail confirmation/decision structures, atomic whole-import validation, explicit no-mail owner records and exact-reference CFP synchronization. Waitlisted talks remain visible as possible conflicts; declined/withdrawn history stays queryable. Replayed identity-poor sources preserve explicit owner bindings. Real collection, exhaustive source coverage and native issue101 acceptance are not claimed.
+
 All notable changes to this plugin are documented here.
 
+## 0.1.64 — 2026-10-31
+
+### Declare Host authoring authority (part of #101)
+
+Add the normal floating `jbaruch/nanoclaw-host` authoring dependency so isolated source review can resolve the published Host contracts. This metadata prerequisite adds no collector, runtime behavior or capture permission.
 ## Viktor deployment — 2026-10-29
 
 - Integrate upstream 0.1.63, including Jev CFP relevance, guarded state backfills,

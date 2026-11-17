@@ -22,6 +22,7 @@ cfp-state.json directly):
 import io
 import json
 import subprocess
+import sys
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -464,6 +465,22 @@ def test_snapshot_refuses_unusable_sources(commit_state, tmp_path, monkeypatch, 
     assert not state_path.exists()
 
 
+def test_existing_digest_only_empty_bootstrap_contract_is_unchanged(
+    commit_state, tmp_path, monkeypatch, capsys
+):
+    state_path, expected = tmp_path / "cfp.json", tmp_path / "expected.json"
+    expected.write_text("{}")
+    _stdin(monkeypatch, {})
+    assert commit_state.main(["--state", str(state_path), "--expected-digests", str(expected)]) == 0
+    assert _read(state_path) == {}
+    assert _out(capsys) == {
+        "written": 0,
+        "skipped_user_actioned": 0,
+        "total_records": 0,
+        "skipped_changed": [],
+    }
+
+
 def test_guarded_new_record_feeds_owner_schema_stamper(
     commit_state, stamp_schema_version, tmp_path, monkeypatch, capsys
 ):
@@ -482,3 +499,41 @@ def test_guarded_new_record_feeds_owner_schema_stamper(
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_a_confirmed_submission_overrides_an_earlier_owner_decision(tmp_path):
+    state_path = tmp_path / "cfp-state.json"
+    state_path.write_text(
+        json.dumps({"conf": {"status": "approved", "user_actioned": True, "updated": "2026-11-01"}})
+    )
+    payload = json.dumps(
+        {
+            "conf": {
+                "status": "sent",
+                "user_actioned": True,
+                "_submission_evidence": [
+                    {"id": "m1", "received_at": "2026-11-03T12:00:00+00:00", "talk": None}
+                ],
+            }
+        }
+    )
+    script = str(Path(__file__).resolve().parents[1] / "skills/check-cfps/scripts/commit-state.py")
+
+    guarded = subprocess.run(
+        [sys.executable, script, "--state", str(state_path)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(guarded.stdout)["skipped_user_actioned"] == 1
+    assert json.loads(state_path.read_text())["conf"]["status"] == "approved"
+
+    subprocess.run(
+        [sys.executable, script, "--state", str(state_path), "--submission-confirmed"],
+        input=payload,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(state_path.read_text())["conf"]["status"] == "sent"
